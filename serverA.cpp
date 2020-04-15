@@ -16,360 +16,307 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <set>
 
 
 //TAKEN FROM BEEJ-TUTORIAL START
 using namespace std;
 
 #define INT_MAX 2147483647
+#define SERVERA_UDP_PORT 21532
 #define PORTA "3490" //server A's static port
-#define HOST_NAME "localhost"
-#define MAXBUFLEN 100000
-#define BOOT_UP_MESSAGE "The Server A is up and running using UDP on port 21444\n\n"
-#define MAP_FILE_NAME "map.txt"
-
-struct Edge {
-  int dest;
-  int len;
+// format to store the vertex infomation from map.txt
+struct MapInfo
+{
+	char map_id;
+	double prop_speed;
+	double tran_speed;
+	set<int> vertice;
+	int num_edges;
+	map<int, vector<pair<int, int> > >	graph;
 };
 
-struct Map {
-  double prop_speed;
-  double trans_speed;
-  map<int, vector<Edge> > maps;
-  int num_edges;
-  int num_vertices;
+struct PathForwardInfo
+{
+	int		map_id;
+	int		src_vertex_idx;
 };
 
-void construct_maps();
-string get_shortest_path(string, int);
-vector<string> split_string_by_delimiter(string, string);
-int get_index_of_shortest_edge_from_source(map<int, int>&, map<int, bool>&);
-string convert_dijkstra_table_to_string(map<int, int>&);
-void print_maps_info();
-void *get_in_addr(struct sockaddr*);
-void append_edges(int, int, int, map<int, vector<Edge> >&);
-void parse_edges(string , map<int, vector<Edge> >&);
-string create_response(string, int);
-void print_request(string&, string&);
-void print_shortest_path(map<int, int>&);
-void print_success_message();
+struct PathReponseInfo
+{
+	int		min_path_vertex[10];
+	int		min_path_dist[10];
+	double	prop_speed;
+	double	tran_speed;
+};
 
-map<string, Map> maps;
+void map_construction();
 
-int main(void) {
-  construct_maps();
+void create_and_bind_udp_socket();
 
-  int sockfd;
-  struct addrinfo hints, *servinfo, *p;
-  int rv;
-  int numbytes;
-  struct sockaddr_storage their_addr;
-  char buf[MAXBUFLEN];
-  socklen_t addr_len;
-  char s[INET6_ADDRSTRLEN];
+void path_finding(int, int, map<int, int>&);
 
-  // set hints to be empty
-  memset(&hints, 0, sizeof hints);
-  // use either IPv4 or IPv6
-  hints.ai_family = AF_UNSPEC;
-  // set socket type to udp
-  hints.ai_socktype = SOCK_DGRAM;
-  // fill ip automatically
-  hints.ai_flags = AI_PASSIVE;
+void show_path_finding_msg(map<int, int>&, int);
 
-  if ((rv = getaddrinfo(HOST_NAME, PORTA, &hints, &servinfo)) != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-    return 1;
-  }
+int udp_sockfd;
+int num_of_maps;
+const int INF = (int)1000000000;
+struct sockaddr_in udp_server_addr, udp_client_addr;
+MapInfo maps[52];
+PathForwardInfo received_buff;
+PathReponseInfo response;
 
-  // loop through all the results and bind to the first we can
-  for(p = servinfo; p != NULL; p = p->ai_next) {
-    if ((sockfd = socket(p->ai_family, p->ai_socktype,
-        p->ai_protocol)) == -1) {
-      perror("listener: socket");
-      continue;
-    }
+int main(int argc, const char* argv[]) {
+	// print boot up msg
+	printf("The Server A is up and running using UDP on port <%d>.\n",SERVERA_UDP_PORT);
 
-    // avoid namespace conflict with std
-    if (::bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-      close(sockfd);
-      perror("listener: bind");
-      continue;
-    }
+	map_construction();
 
-    break;
-  }
+	create_and_bind_udp_socket();
 
-  if (p == NULL) {
-    fprintf(stderr, "listener: failed to bind socket\n");
-    return 2;
-  }
+	// catch any possible message
+	while(true) {
+		// receive map id and starting vertex from aws
+		socklen_t udp_client_addr_len = sizeof udp_client_addr;
+		// reference: Beej Guide
+		char recv_buf[1024];
+		memset(recv_buf, 'z', 1024);
+		if (recvfrom(udp_sockfd,recv_buf, sizeof recv_buf,0,
+			(struct sockaddr *) &udp_client_addr, &udp_client_addr_len) == -1) {
+			perror("ServerA Receive Error");
+			exit(1);
+		}
 
-  printf(BOOT_UP_MESSAGE);
-  print_maps_info();
+		memset(&received_buff, 0, sizeof received_buff);
+		memcpy(&received_buff, recv_buf, sizeof recv_buf);
 
-  addr_len = sizeof their_addr;
+		printf("The Server A has received input for finding shortest paths: starting vertex <%d> of map <%c>.\n", received_buff.src_vertex_idx, (char)received_buff.map_id);
+		
+		char id = (char)received_buff.map_id;
+		int src_vertex = received_buff.src_vertex_idx;
 
-  while (1) {
-    if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN-1 , 0,
-        (struct sockaddr *)&their_addr, &addr_len)) == -1) {
-      perror("recvfrom");
-      exit(1);
-    }
+		// locate the index of the map whose map_id is required id
+		int index = 0;
+		while (maps[index].map_id != id) {
+			index++;
+		}
 
-    buf[numbytes] = '\0';
-    
-    vector<string> payloads = split_string_by_delimiter(string(buf), " ");
+		// using Dijkstra's to find the shortest path and store into result
+		map<int, int> result;
+		path_finding(src_vertex, index, result);
 
-    string map_id = payloads[0];
-    int start_index = atoi(payloads[1].c_str());
+		// print out dijkstra's result on screen
+		show_path_finding_msg(result, src_vertex);
 
-    print_request(map_id, payloads[1]);
+		// construct response message
+		response.prop_speed = maps[index].prop_speed;
+		response.tran_speed = maps[index].tran_speed;
 
-    string response = create_response(map_id, start_index);
-  
-    sendto(sockfd, response.c_str(), strlen(response.c_str()), 0, (struct sockaddr *)&their_addr, addr_len);
-    print_success_message();
-  }
+		map<int, int>::iterator iter = result.begin();
+		int idx = 0;
+    	while(iter != result.end()) {
+			int cur_ver = iter -> first;
+			int cur_dist = iter -> second;
+			response.min_path_vertex[idx] = cur_ver;
+			response.min_path_dist[idx] = cur_dist;
+			idx++;
+			iter++;
+    	}
+
+		char send_buf[1024];
+		memset(send_buf, 0, 1024);
+		memcpy(send_buf, &response, sizeof response);
+		// send path finding result to the AWS
+		// reference: Beej Guide
+		if (sendto(udp_sockfd, send_buf, sizeof send_buf, 0, 
+		    (const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
+			perror("ServerA Response Error");
+			exit(1);
+		}
+		printf("The Server A has sent the shortest paths to AWS.\n");
+	}
+	close(udp_sockfd);
+	return 0;
 }
 
-// get sockaddr, IPv4 or IPv6
-void *get_in_addr(struct sockaddr *sa) {
-  if (sa->sa_family == AF_INET) {
-      return &(((struct sockaddr_in*)sa)->sin_addr);
-  }
-
-  return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-void print_maps_info() {
-  cout << "The Server A has constructed a list of " <<  maps.size() << " maps:\n" << endl;
-  cout << "------------------------------------------" << endl;
-  cout << "Map ID Num Vertices Num Edges" << endl;
-  cout << "------------------------------------------" << endl;
-
-  map<string, Map>::iterator it;
-
-  for (it = maps.begin(); it != maps.end(); it++) {
-    cout << it->first << "       " << it->second.num_vertices << "             " << it->second.num_edges << endl;
-  }
-
-  cout << "------------------------------------------" << endl;
-}
-
-vector<string> split_string_by_delimiter(string input, string delimiter) {
-  vector<string> strings;
-  int i = input.find_first_of(delimiter);
-
-  while (i != string::npos) {
-    string parsed_string = input.substr(0, i);
-    strings.push_back(parsed_string);
-    input = input.substr(i+1);
-    i = input.find_first_of(delimiter);
-  }
-
-  if (input.size() > 0) strings.push_back(input);
-  return strings;
-}
-
-void append_edges(int start_node, int dest_node, int edge_len, map<int, vector<Edge> > &edge_map) {
-  Edge edge;
-  edge.dest = dest_node;
-  edge.len = edge_len;
-
-  vector<Edge> prev_edges;
-
-  if (edge_map.find(start_node) != edge_map.end()) {
-    prev_edges = edge_map[start_node];
-  }
-
-  prev_edges.push_back(edge);
-  edge_map[start_node] = prev_edges;
-}
-
-void parse_edges(string edge_str, map<int, vector<Edge> > &edge_map) {
-  int start_node;
-  int dest_node;
-  int edge_len;
-
-  int stop_index = edge_str.find_first_of(" ");
-  
-  start_node = atoi(edge_str.substr(0, stop_index).c_str());
-
-  edge_str = edge_str.substr(stop_index + 1);
-  stop_index = edge_str.find_first_of(" ");
-  dest_node = atoi(edge_str.substr(0, stop_index).c_str());
-
-  edge_str = edge_str.substr(stop_index + 1);
-  edge_len = atoi(edge_str.c_str());
-
-  append_edges(start_node, dest_node, edge_len, edge_map);
-  append_edges(dest_node, start_node, edge_len, edge_map);
-}
-
-void construct_maps() {
-
-	vector<string> inputs;
-	string line;
+/* Read map.txt and save the information into result map, then create the onscreen message */
+void map_construction() {
 	ifstream mapFile("map1.txt");
+	string line;
+	int idx = -1;
+	int i = 0; // store the # of line counting from map_id line
 	while (getline(mapFile, line)) {
-		inputs.push_back(line);
+		// split current line with space and save each line into fileValues
+		vector<string> fileValues;
+		const char *delim = " ";
+		char *strs = new char[line.length() + 1];
+		strcpy(strs, line.c_str());
+		char *p = strtok(strs, delim);
+		while (p) {
+			string s = p;
+			fileValues.push_back(s);
+			p = strtok(NULL, delim);
+		}
+
+		// if the first item is alphabet, reset i to 0
+		if (isalpha(fileValues[0].c_str()[0])) {
+			num_of_maps += 1;
+			idx += 1;
+			i = 0;
+		}
+
+		if (i == 0) { // if i = 0, current line has map id
+			maps[idx].map_id = line.c_str()[0];
+		}
+    else if (i == 1) { // if i = 1, current line is for propagation speed
+			maps[idx].prop_speed = stold(line.c_str());
+		}
+    else if (i == 2) { // if i = 2, current line is for transmission speed
+			maps[idx].tran_speed = stold(line.c_str());
+		}
+    else if (i > 2) { // if i > 2, then current line has vertex information 
+			int first_end = atoi(fileValues[0].c_str());
+			int second_end = atoi(fileValues[1].c_str());
+			int dist = atoi(fileValues[2].c_str());
+			// build adjacency map
+			pair<int, int> pair1(second_end, dist);
+			if (maps[idx].graph.count(first_end) > 0) {
+				vector<pair<int, int> > cur_vec = maps[idx].graph[first_end];
+				cur_vec.push_back(pair1);
+				maps[idx].graph[first_end] = cur_vec;
+			}
+      else {
+				vector<pair<int, int> > cur_vec;
+				cur_vec.push_back(pair1);
+				maps[idx].graph[first_end] = cur_vec;
+			}
+			pair<int, int> pair2(first_end, dist);
+
+			if (maps[idx].graph.count(second_end) > 0) {
+				vector<pair<int, int> > cur_vec = maps[idx].graph[second_end];
+				cur_vec.push_back(pair2);
+				maps[idx].graph[second_end] = cur_vec;
+			}
+      else {
+				vector<pair<int, int> > cur_vec;
+				cur_vec.push_back(pair2);
+				maps[idx].graph[second_end] = cur_vec;
+			}
+			maps[idx].num_edges += 1;
+			maps[idx].vertice.insert(first_end);
+			maps[idx].vertice.insert(second_end);
+		}
+		i++;
 	}
 
-	mapFile.close();
+	// print onscreen message
+	printf("The Server A has constructed a list of <%d> maps:\n", num_of_maps);
+	printf("--------------------------------------------------\n");
+	printf("%-8s\t%-16s\t%-16s\n", "Map ID", "Num Vertices", "Num Edges");
+	printf("--------------------------------------------------\n");
+	for (int idx = 0; idx < num_of_maps; idx++) {
+		char map_id = maps[idx].map_id;
+		int num_vertices = maps[idx].vertice.size();
+		int num_edges = maps[idx].num_edges;
+		printf("%-8c\t%-16d\t%-16d\t\n", map_id, num_vertices, num_edges);
+	}
+	printf("--------------------------------------------------\n");
+}
 
-	for (int i = 0; i < inputs.size(); i++) {
-		string input = inputs[i];
-		int num_edges = 1;
+/* create a udp socket and bind the socket with address */
+void create_and_bind_udp_socket() {
+	// create udp client
+	// reference: Beej Guide
+	if ((udp_sockfd = socket(PF_INET, SOCK_DGRAM, 0)) == -1) {
+		perror("ServerA UDP Socket Create Error");
+		exit(1);
+	}
 
-		if (isalpha(input[0])) {
-			Map curr_map;
-			string mapId = input;
-			map<int, vector<Edge> > edge_map;
+	memset(&udp_server_addr, 0, sizeof udp_server_addr);
+	udp_server_addr.sin_family = AF_INET;
+	udp_server_addr.sin_port = htons(SERVERA_UDP_PORT);
+	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-			curr_map.prop_speed = stod(inputs[++i]);
-			curr_map.trans_speed = stod(inputs[++i]);
+	// bind the socket with udp server address
+	socklen_t udp_server_addr_len = sizeof udp_server_addr;
+	if(bind(udp_sockfd, (struct sockaddr*) &udp_server_addr, udp_server_addr_len) == -1){
+		perror("ServerA UDP Bind Error");
+		exit(1);
+	}
+}
 
-			i++;
-			while (1) {
-				if (i+1 >= inputs.size() || isalpha(inputs[i+1][0])) {
-					break;
-				}
-				string curr_edge_str = inputs[i];
+/* find the shortest path from given source vertex to any other vertices */
+void path_finding(int src, int index, map<int, int> &result) {
+	// store the vertices involved
+	set<int> vertices = maps[index].vertice;
 
-				parse_edges(curr_edge_str, edge_map);
+	// cur_graph stores every vertex and its adjacent vertices along with the distance between them
+	map<int, vector<pair<int, int> > > cur_graph = maps[index].graph;
 
-				num_edges++;
-				i++;
+	set<int>::iterator iter = vertices.begin();
+	// vis map stores whether a vertex has beeb visited
+	map<int, bool> vis;
+	// init every node distance to INF
+	while(iter != vertices.end()) {
+		int cur_ver = *iter;
+		if (cur_ver != src) {
+			result[cur_ver] = INF;
+		}/* else {
+			result[cur_ver] = 0;
+		}*/
+		vis[cur_ver] = false;
+		iter++;
+	}
+
+	map<int, bool>::iterator iter_vis = vis.begin();
+	while(iter_vis != vis.end()) {
+		int u = -1;
+		int MIN = INF;
+		map<int, bool>::iterator iter_vis1 = vis.begin();
+		while (iter_vis1 != vis.end()) {
+			int cur_ver = iter_vis1 -> first;
+			bool state = iter_vis1 -> second;
+			if (state == false && result[cur_ver] < MIN) {
+				u = cur_ver;
+				MIN = result[cur_ver];
 			}
-			curr_map.num_edges = num_edges;
-			curr_map.maps = edge_map;
-			curr_map.num_vertices = edge_map.size();
-			maps[mapId] = curr_map;
+			iter_vis1++;
 		}
-	}      
+		if (u == -1) return;
+		vis[u] = true;
+
+		vector<pair<int, int> > neighbors = cur_graph[u];
+
+		for (uint i = 0; i < neighbors.size(); i++) {
+			int v = neighbors[i].first;
+			int dist = neighbors[i].second;
+			// if the vertex hasn't been visted and we find a shorter path than the previous one
+			if (vis[v] == false && result[u] + dist < result[v]) {
+				result[v] = result[u] + dist;
+			}
+		}
+		iter_vis++;
+	}
 }
 
-string get_shortest_path(string map_id, int start_index) {
-  Map selected_map = maps[map_id];
-  map<int, bool> isVisited;
-  map<int, int>  dijkstra_table;
+/* print the path finding results on the screen */
+void show_path_finding_msg(map<int, int>&result, int src_vertex) {
+	printf("The Server A has identified the shortest paths:\n");
+	printf("------------------------------------------------\n");
+	printf("%-16s\t%-16s\t\n", "Destination", "Min Length");
+	printf("------------------------------------------------\n");
 
-  map<int, vector<Edge> >::iterator it = selected_map.maps.begin();
-
-  while (it != selected_map.maps.end()) {
-    Edge curr_edge;
-
-    curr_edge.dest = it->first;
-    dijkstra_table[it->first] = it->first == start_index ? 0 : INT_MAX;
-
-    isVisited[it->first] = false;
-
-    it++;
-  }
-
-  while (1) {
-    int index = get_index_of_shortest_edge_from_source(dijkstra_table, isVisited);
-
-    if (index == -1) break;
-
-    isVisited[index] = true;
-
-    vector<Edge> adjacent_nodes = selected_map.maps[index];
-
-    for (int i = 0; i < adjacent_nodes.size(); i++) {
-      Edge adjacent_node = adjacent_nodes[i];
-
-      int new_dist = adjacent_node.len + dijkstra_table[index];
-
-      if (new_dist < dijkstra_table[adjacent_node.dest]) {
-        dijkstra_table[adjacent_node.dest] = new_dist;
-      }
-    }
-  }
-
-  print_shortest_path(dijkstra_table);
-
-  return convert_dijkstra_table_to_string(dijkstra_table);
-}
-
-int get_index_of_shortest_edge_from_source(map<int, int> &dijkstra_table, map<int, bool> &isVisited) {
-  int min = INT_MAX;
-  int index = -1;
-
-  map<int, int>::iterator it = dijkstra_table.begin();
-
-  while (it != dijkstra_table.end()) {
-    if (dijkstra_table[it->first] <= min && !isVisited[it->first]) {
-      index = it->first;
-      min = dijkstra_table[it->first];
-    }
-
-    it++;
-  }
-
-  return index;
-}
-
-string convert_dijkstra_table_to_string(map<int, int> &dijkstra_table) {
-  map<int, int>::iterator it = dijkstra_table.begin();
-  string output = "";
-
-  while(it != dijkstra_table.end()) {
-    int node_index = it->first;
-    int distance_from_source = it->second;
-
-    if (distance_from_source != 0) {
-      output += to_string(node_index);
-      output += " ";
-      output += to_string(distance_from_source);
-      output += "-";
-    }
-
-    it++;
-  }
-
-  return output.substr(0, output.length() - 1);
-}
-
-void print_request(string &map_id, string &start_index) {
-  cout << endl;
-  cout << "The Server A has received input for finding shortest paths: starting vertex "
-    << start_index << " of map " << map_id << endl;
-}
-
-void print_shortest_path(map<int, int> &dijkstra_table) {
-  cout << endl;
-  cout << "The Server A has identified the following shortest paths:" << endl;
-  cout << "------------------------------------------" << endl;
-  cout << "Destination Min Length" << endl;
-  cout << "------------------------------------------" << endl;
-
-  map<int, int>::iterator it = dijkstra_table.begin();
-
-  while (it != dijkstra_table.end()) {
-    int edge = it->first;
-    int dist = it->second;
-
-    if (dist > 0) {
-      cout << to_string(edge) << "               " << to_string(dist) << endl;
-    }
-
-    it++;
-  }
-  cout << "------------------------------------------" << endl;
-}
-
-void print_success_message() {
-  cout << endl;
-  cout << "The Server A has sent shortest paths to AWS." << endl;
-}
-
-string create_response(string map_id, int start_index) {
-  string map = get_shortest_path(map_id, start_index);
-  long double prop_speed = maps[map_id].prop_speed;
-  long double trans_speed = maps[map_id].trans_speed;
-
-  return map + "," + to_string(prop_speed) + "," + to_string(trans_speed);
+	// iterate through the result
+	map<int, int>::iterator iter = result.begin();
+	while (iter != result.end()) {
+		int cur_des = iter->first;
+		int cur_len = iter->second;
+		if (cur_des == src_vertex) {
+			iter++;
+			continue;
+		}
+		printf("%-16d\t%-16d\t\t\n", cur_des, cur_len);
+		iter++;
+	}
+	printf("------------------------------------------------\n");
 }
