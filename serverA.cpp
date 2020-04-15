@@ -146,20 +146,10 @@ void map_construction() {
 	int idx = -1;
 	int i = 0; // store the # of line counting from map_id line
 	while (getline(mapFile, line)) {
-		// split current line with space and save each line into fileValues
-		vector<string> fileValues;
-		const char *delim = " ";
-		char *strs = new char[line.length() + 1];
-		strcpy(strs, line.c_str());
-		char *p = strtok(strs, delim);
-		while (p) {
-			string s = p;
-			fileValues.push_back(s);
-			p = strtok(NULL, delim);
-		}
+		
 
 		// if the first item is alphabet, reset i to 0
-		if (isalpha(fileValues[0].c_str()[0])) {
+		if (isalpha(line.c_str()[0])) {
 			num_of_maps += 1;
 			idx += 1;
 			i = 0;
@@ -175,6 +165,17 @@ void map_construction() {
 			maps[idx].tran_speed = stold(line.c_str());
 		}
     else if (i > 2) { // if i > 2, then current line has vertex information 
+      // split current line with space and save each line into fileValues
+      vector<string> fileValues;
+      const char *delim = " ";
+      char *strs = new char[line.length() + 1];
+      strcpy(strs, line.c_str());
+      char *p = strtok(strs, delim);
+      while (p) {
+        string s = p;
+        fileValues.push_back(s);
+        p = strtok(NULL, delim);
+      }
 			int first_end = atoi(fileValues[0].c_str());
 			int second_end = atoi(fileValues[1].c_str());
 			int dist = atoi(fileValues[2].c_str());
