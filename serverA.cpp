@@ -146,12 +146,10 @@ void map_construction() {
 	int idx = -1;
 	int i = 0; // store the # of line counting from map_id line
 	while (getline(mapFile, line)) {
-		
-
 		// if the first item is alphabet, reset i to 0
 		if (isalpha(line.c_str()[0])) {
-			num_of_maps += 1;
-			idx += 1;
+			num_of_maps++;
+			idx++;
 			i = 0;
 		}
 
@@ -167,18 +165,15 @@ void map_construction() {
     else if (i > 2) { // if i > 2, then current line has vertex information 
       // split current line with space and save each line into fileValues
       vector<string> fileValues;
-      const char *delim = " ";
-      char *strs = new char[line.length() + 1];
-      strcpy(strs, line.c_str());
-      char *p = strtok(strs, delim);
-      while (p) {
-        string s = p;
-        fileValues.push_back(s);
-        p = strtok(NULL, delim);
-      }
-			int first_end = atoi(fileValues[0].c_str());
-			int second_end = atoi(fileValues[1].c_str());
-			int dist = atoi(fileValues[2].c_str());
+      fileValues.push_back(line);
+      string ind = fileValues[0];
+      int stop_index = ind.find_first_of(" ");
+			int first_end = atoi(ind.substr(0, stop_index).c_str());
+      ind = ind.substr(stop_index + 1);
+      stop_index = ind.find_first_of(" ");
+			int second_end = atoi(ind.substr(0, stop_index).c_str());
+      ind = ind.substr(stop_index + 1);
+			int dist = atoi(ind.c_str());
 			// build adjacency map
 			pair<int, int> pair1(second_end, dist);
 			if (maps[idx].graph.count(first_end) > 0) {
@@ -203,7 +198,7 @@ void map_construction() {
 				cur_vec.push_back(pair2);
 				maps[idx].graph[second_end] = cur_vec;
 			}
-			maps[idx].num_edges += 1;
+			maps[idx].num_edges++;
 			maps[idx].vertice.insert(first_end);
 			maps[idx].vertice.insert(second_end);
 		}
