@@ -1,9 +1,9 @@
-all: aws.c client.c serverA.c serverB.c serverC.c
-	g++ -o aws aws.c
-	g++ -o client client.c
-	g++ -o serverA serverA.c
-	g++ -o serverB serverB.c
-	g++ -o serverC serverC.c
+all:
+	g++ -std=c++11 -ggdb -o aws aws.cpp
+	g++ -std=c++11 -ggdb -o client client.cpp
+	g++ -std=c++11 -ggdb -o serverA serverA.cpp
+	g++ -std=c++11 -ggdb -o serverB serverB.cpp
+	g++ -std=c++11 -ggdb -o serverC serverC.cpp
 
 aws:
 	g++ -std=c++11 -ggdb -o aws aws.cpp

@@ -24,10 +24,10 @@ using namespace std;
 
 #define INT_MAX 2147483647
 #define SERVERA_UDP_PORT 21532
+#define MAXDATASIZE 10000
 #define PORTA "3490" //server A's static port
 // format to store the vertex infomation from map.txt
-struct MapInfo
-{
+struct MapInfo{
 	char map_id;
 	double prop_speed;
 	double tran_speed;
@@ -36,14 +36,12 @@ struct MapInfo
 	map<int, vector<pair<int, int> > >	graph;
 };
 
-struct PathForwardInfo
-{
+struct PathForwardInfo{
 	int		map_id;
 	int		src_vertex_idx;
 };
 
-struct PathReponseInfo
-{
+struct PathReponseInfo{
 	int		min_path_vertex[10];
 	int		min_path_dist[10];
 	double	prop_speed;
@@ -152,36 +150,36 @@ void map_construction() {
 			idx++;
 			i = 0;
 		}
-
 		if (i == 0) { // if i = 0, current line has map id
 			maps[idx].map_id = line.c_str()[0];
 		}
-    else if (i == 1) { // if i = 1, current line is for propagation speed
+		else if (i == 1) { // if i = 1, current line is for propagation speed
 			maps[idx].prop_speed = stold(line.c_str());
 		}
-    else if (i == 2) { // if i = 2, current line is for transmission speed
+		else if (i == 2) { // if i = 2, current line is for transmission speed
 			maps[idx].tran_speed = stold(line.c_str());
-		}
-    else if (i > 2) { // if i > 2, then current line has vertex information 
-      // split current line with space and save each line into fileValues
-      vector<string> fileValues;
-      fileValues.push_back(line);
-      string ind = fileValues[0];
-      int stop_index = ind.find_first_of(" ");
+			}
+		else if (i > 2) { // if i > 2, then current line has vertex information 
+			// split current line with space and save each line into fileValues
+			vector<string> fileValues;
+			fileValues.push_back(line);
+			string ind = fileValues[0];
+			int stop_index = ind.find_first_of(" ");
 			int first_end = atoi(ind.substr(0, stop_index).c_str());
-      ind = ind.substr(stop_index + 1);
-      stop_index = ind.find_first_of(" ");
+			ind = ind.substr(stop_index + 1);
+			stop_index = ind.find_first_of(" ");
 			int second_end = atoi(ind.substr(0, stop_index).c_str());
-      ind = ind.substr(stop_index + 1);
+			ind = ind.substr(stop_index + 1);
 			int dist = atoi(ind.c_str());
 			// build adjacency map
 			pair<int, int> pair1(second_end, dist);
+
 			if (maps[idx].graph.count(first_end) > 0) {
 				vector<pair<int, int> > cur_vec = maps[idx].graph[first_end];
 				cur_vec.push_back(pair1);
 				maps[idx].graph[first_end] = cur_vec;
 			}
-      else {
+			else {
 				vector<pair<int, int> > cur_vec;
 				cur_vec.push_back(pair1);
 				maps[idx].graph[first_end] = cur_vec;
@@ -193,7 +191,7 @@ void map_construction() {
 				cur_vec.push_back(pair2);
 				maps[idx].graph[second_end] = cur_vec;
 			}
-      else {
+			else {
 				vector<pair<int, int> > cur_vec;
 				cur_vec.push_back(pair2);
 				maps[idx].graph[second_end] = cur_vec;
@@ -204,7 +202,6 @@ void map_construction() {
 		}
 		i++;
 	}
-
 	// print onscreen message
 	printf("The Server A has constructed a list of <%d> maps:\n", num_of_maps);
 	printf("--------------------------------------------------\n");
@@ -250,26 +247,24 @@ void path_finding(int src, int index, map<int, int> &result) {
 	map<int, vector<pair<int, int> > > cur_graph = maps[index].graph;
 
 	set<int>::iterator iter = vertices.begin();
-	// vis map stores whether a vertex has beeb visited
-	map<int, bool> vis;
+	// isVisited map stores whether a vertex has beeb visited
+	map<int, bool> isVisited;
 	// init every node distance to INF
 	while(iter != vertices.end()) {
 		int cur_ver = *iter;
 		if (cur_ver != src) {
 			result[cur_ver] = INF;
-		}/* else {
-			result[cur_ver] = 0;
-		}*/
-		vis[cur_ver] = false;
+		}
+		isVisited[cur_ver] = false;
 		iter++;
 	}
 
-	map<int, bool>::iterator iter_vis = vis.begin();
-	while(iter_vis != vis.end()) {
+	map<int, bool>::iterator iter_vis = isVisited.begin();
+	while(iter_vis != isVisited.end()) {
 		int u = -1;
 		int MIN = INF;
-		map<int, bool>::iterator iter_vis1 = vis.begin();
-		while (iter_vis1 != vis.end()) {
+		map<int, bool>::iterator iter_vis1 = isVisited.begin();
+		while (iter_vis1 != isVisited.end()) {
 			int cur_ver = iter_vis1 -> first;
 			bool state = iter_vis1 -> second;
 			if (state == false && result[cur_ver] < MIN) {
@@ -278,8 +273,10 @@ void path_finding(int src, int index, map<int, int> &result) {
 			}
 			iter_vis1++;
 		}
-		if (u == -1) return;
-		vis[u] = true;
+		if (u == -1){
+			return;
+		}
+		isVisited[u] = true;
 
 		vector<pair<int, int> > neighbors = cur_graph[u];
 
@@ -287,7 +284,7 @@ void path_finding(int src, int index, map<int, int> &result) {
 			int v = neighbors[i].first;
 			int dist = neighbors[i].second;
 			// if the vertex hasn't been visted and we find a shorter path than the previous one
-			if (vis[v] == false && result[u] + dist < result[v]) {
+			if (isVisited[v] == false && result[u] + dist < result[v]) {
 				result[v] = result[u] + dist;
 			}
 		}
