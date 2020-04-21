@@ -66,7 +66,7 @@ PathReponseInfo response;
 
 int main(int argc, const char* argv[]) {
 	// print boot up msg
-	printf("The Server A is up and running using UDP on port <%d>.\n",SERVERA_UDP_PORT);
+	cout << "The Server A is up and running using UDP on port <" << SERVERA_UDP_PORT << ">." << endl;
 
 	map_construction();
 
@@ -78,60 +78,86 @@ int main(int argc, const char* argv[]) {
 		socklen_t udp_client_addr_len = sizeof udp_client_addr;
 		// reference: Beej Guide
 		char recv_buf[1024];
-		memset(recv_buf, 'z', 1024);
-		if (recvfrom(udp_sockfd,recv_buf, sizeof recv_buf,0,
-			(struct sockaddr *) &udp_client_addr, &udp_client_addr_len) == -1) {
+		int numbytes;
+		memset(recv_buf, 0, 1024);
+		if ((numbytes = recvfrom(udp_sockfd,recv_buf, sizeof recv_buf,0,
+			(struct sockaddr *) &udp_client_addr, &udp_client_addr_len)) == -1) {
 			perror("ServerA Receive Error");
 			exit(1);
 		}
+		recv_buf[numbytes] = '\0';
+		vector<string> recv_payload;
+		string recv_input = string(recv_buf);
+		int i = recv_input.find_first_of(" ");
+		while(i != string::npos){
+			string parsed_string = recv_input.substr(0, i);
+			recv_payload.push_back(parsed_string);
+			recv_input = recv_input.substr(i+1);
+			i = recv_input.find_first_of(" ");
+		}
+		if(recv_input.size() > 0){
+			recv_payload.push_back(recv_input);
+		}
 
-		memset(&received_buff, 0, sizeof received_buff);
-		memcpy(&received_buff, recv_buf, sizeof recv_buf);
+		//memset(&received_buff, 0, sizeof received_buff);
+		//memcpy(&received_buff, recv_buf, sizeof recv_buf);
 
-		printf("The Server A has received input for finding shortest paths: starting vertex <%d> of map <%c>.\n", received_buff.src_vertex_idx, (char)received_buff.map_id);
-		
-		char id = (char)received_buff.map_id;
-		int src_vertex = received_buff.src_vertex_idx;
+		cout << "The Server A has received input for finding shortest paths: starting vertex <"<< recv_payload[1].c_str() << "> of map <" << (char)atoi(recv_payload[0].c_str()) << ">." << endl;
+		char id = atoi(recv_payload[0].c_str());
+		int src_vertex = atoi((recv_payload[1].c_str()));
 
 		// locate the index of the map whose map_id is required id
 		int index = 0;
 		while (maps[index].map_id != id) {
+			if(index == 51){
+				string graph_not_found_message = "Graph not Found";
+				// send path finding result to the AWS
+				// reference: Beej Guide
+				if (sendto(udp_sockfd, graph_not_found_message.c_str(), sizeof graph_not_found_message, 0, 
+					(const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
+					perror("ServerA Response Error");
+					exit(1);
+				}
+				cout << "The Server A has sent \"" << graph_not_found_message << "\" to AWS." << endl;
+				break;
+			}
 			index++;
 		}
+			if(index != 51){
+			// using Dijkstra's to find the shortest path and store into result
+			map<int, int> result;
+			path_finding(src_vertex, index, result);
 
-		// using Dijkstra's to find the shortest path and store into result
-		map<int, int> result;
-		path_finding(src_vertex, index, result);
+			// print out dijkstra's result on screen
+			show_path_finding_msg(result, src_vertex);
 
-		// print out dijkstra's result on screen
-		show_path_finding_msg(result, src_vertex);
+			// construct response message
+			response.prop_speed = maps[index].prop_speed;
+			response.tran_speed = maps[index].tran_speed;
 
-		// construct response message
-		response.prop_speed = maps[index].prop_speed;
-		response.tran_speed = maps[index].tran_speed;
+			map<int, int>::iterator iter = result.begin();
+			int idx = 0;
+			while(iter != result.end()) {
+				int cur_ver = iter -> first;
+				int cur_dist = iter -> second;
+				response.min_path_vertex[idx] = cur_ver;
+				response.min_path_dist[idx] = cur_dist;
+				idx++;
+				iter++;
+			}
 
-		map<int, int>::iterator iter = result.begin();
-		int idx = 0;
-    	while(iter != result.end()) {
-			int cur_ver = iter -> first;
-			int cur_dist = iter -> second;
-			response.min_path_vertex[idx] = cur_ver;
-			response.min_path_dist[idx] = cur_dist;
-			idx++;
-			iter++;
-    	}
-
-		char send_buf[1024];
-		memset(send_buf, 0, 1024);
-		memcpy(send_buf, &response, sizeof response);
-		// send path finding result to the AWS
-		// reference: Beej Guide
-		if (sendto(udp_sockfd, send_buf, sizeof send_buf, 0, 
-		    (const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
-			perror("ServerA Response Error");
-			exit(1);
+			char send_buf[1024];
+			memset(send_buf, 0, 1024);
+			memcpy(send_buf, &response, sizeof response);
+			// send path finding result to the AWS
+			// reference: Beej Guide
+			if (sendto(udp_sockfd, send_buf, sizeof send_buf, 0, 
+				(const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
+				perror("ServerA Response Error");
+				exit(1);
+			}
+			printf("The Server A has sent the shortest paths to AWS.\n");
 		}
-		printf("The Server A has sent the shortest paths to AWS.\n");
 	}
 	close(udp_sockfd);
 	return 0;

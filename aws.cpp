@@ -23,7 +23,7 @@ using namespace std;
 #define AWS_UDP_PORT 23532
 #define AWS_TCP_CLIENT_PORT 24532
 #define SERVERA_PORT 21532
-#define SERVERB_PORT 22532
+#define SERVERC_PORT 22532
 
 struct ComputeRequestInfo
 {
@@ -72,9 +72,9 @@ void send_to_serverA();
 
 void receive_from_serverA();
 
-void send_to_serverB();
+void send_to_serverC();
 
-void receive_from_serverB();
+void receive_from_serverC();
 
 int udp_sockfd, tcp_sockfd_client;
 struct sockaddr_in udp_server_addr, udp_client_addr, tcp_server_addr, tcp_cliser_addr;
@@ -132,7 +132,7 @@ int main(int argc, const char* argv[]){
 		// receive from serverA
 		receive_from_serverA();
 
-		// construct the information which will be sent to serverB
+		// construct the information which will be sent to serverC
 		cal_request.prop_speed = received_buff.prop_speed;
 		cal_request.tran_speed = received_buff.tran_speed;
 		cal_request.file_size = input_msg.file_size;
@@ -142,11 +142,11 @@ int main(int argc, const char* argv[]){
 			cal_request.min_path_dist[idx] = received_buff.min_path_dist[idx];
 		}
 
-		// send request to serverB
-		send_to_serverB();
+		// send request to serverC
+		send_to_serverC();
 
-		// receive from serverB
-		receive_from_serverB();
+		// receive from serverC
+		receive_from_serverC();
 
 		char send_buf3[1024];
 		memset(send_buf3, 0, 1024);
@@ -214,6 +214,8 @@ void send_to_serverA() {
 	forward_msg.map_id = input_msg.map_id;
 	forward_msg.src_vertex_idx = input_msg.src_vertex_idx;
 
+    string send_message = std::to_string(input_msg.map_id) + " " + std::to_string(input_msg.src_vertex_idx);
+
 	char send_buf1[1024];
 	memset(send_buf1, 0, 1024);
 	memcpy(send_buf1, &forward_msg, sizeof forward_msg);
@@ -224,7 +226,7 @@ void send_to_serverA() {
 	udp_server_addr.sin_port = htons(SERVERA_PORT);
 	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-	sendto(udp_sockfd, (void*) &send_buf1, sizeof send_buf1, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
+	sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_buf1, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
 	
 	// print onscreen message
 	printf("The AWS has sent Map ID <%c> and starting vertex <%d> to server A using UDP over port <%d>.\n", (char)forward_msg.map_id, forward_msg.src_vertex_idx, AWS_UDP_PORT);
@@ -237,29 +239,35 @@ void receive_from_serverA() {
 	char recv_buf2[1024];
 	memset(recv_buf2, 'z', 1024);
 	recvfrom(udp_sockfd, recv_buf2, 1024, 0, (struct sockaddr*)&udp_client_addr, &server_udp_len);
-	memset(&received_buff, 0, sizeof received_buff);
-	memcpy(&received_buff, recv_buf2, sizeof received_buff);
-	// output onscreen message
-	printf("The AWS has received shortest paths from serverA:\n");
-	printf("------------------------------------------------\n");
-	printf("%-16s\t%-16s\t\n", "Destination", "Min Length");
-	printf("------------------------------------------------\n");
-	// iterate the result
-	for (int idx = 0; idx < 10; idx++) {
-		int cur_des = received_buff.min_path_vertex[idx];
-		int cur_len = received_buff.min_path_dist[idx];
-		if (cur_len > 0) {
-			printf("%-16d\t%-16d\t\t\n", cur_des, cur_len);
-		}
-	}
-	printf("------------------------------------------------\n");
+    char not_found[] = "Graph not Found";
+    if(!(strcmp(recv_buf2,not_found))){
+        cout << "The AWS has received map information from server A: " << recv_buf2 << endl;
+    }
+    else{
+        memset(&received_buff, 0, sizeof received_buff);
+        memcpy(&received_buff, recv_buf2, sizeof received_buff);
+        // output onscreen message
+        printf("The AWS has received shortest paths from serverA:\n");
+        printf("------------------------------------------------\n");
+        printf("%-16s\t%-16s\t\n", "Destination", "Min Length");
+        printf("------------------------------------------------\n");
+        // iterate the result
+        for (int idx = 0; idx < 10; idx++) {
+            int cur_des = received_buff.min_path_vertex[idx];
+            int cur_len = received_buff.min_path_dist[idx];
+            if (cur_len > 0) {
+                printf("%-16d\t%-16d\t\t\n", cur_des, cur_len);
+            }
+        }
+        printf("------------------------------------------------\n");
+    }
 }
 
-/* Send request to serverB */
-void send_to_serverB() {
+/* Send request to serverC */
+void send_to_serverC() {
 	memset(&udp_server_addr,0, sizeof(udp_server_addr));
 	udp_server_addr.sin_family = AF_INET;
-	udp_server_addr.sin_port = htons(SERVERB_PORT);
+	udp_server_addr.sin_port = htons(SERVERC_PORT);
 	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
 	char send_buf2[1024];
@@ -268,12 +276,12 @@ void send_to_serverB() {
 	sendto(udp_sockfd, send_buf2, 1024, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
 
 	//print the onscreen message
-	printf("The AWS has sent path length, propagation speed and transmission speed to server B using UDP over port <%d>.\n", 
+	printf("The AWS has sent path length, propagation speed and transmission speed to server C using UDP over port <%d>.\n", 
 		AWS_UDP_PORT);
 }
 
-/* Receive response from serverB */
-void receive_from_serverB() {
+/* Receive response from serverC */
+void receive_from_serverC() {
 	// build the container that will receive the msg from A and receive from A
 	char recv_buf3[1024];
 	memset(recv_buf3, 'z', 1024);
@@ -283,7 +291,7 @@ void receive_from_serverB() {
 	memcpy(&received_delay, recv_buf3, sizeof received_delay);
 
 	// print onscreen message
-	printf("The AWS has received delays from serverB:\n");
+	printf("The AWS has received delays from serverC:\n");
 	printf("---------------------------------------------------------------\n");
 	printf("%-8s\t%-8s\t%-8s\t%-8s\n", "Destination", "Tt", "Tp", "Delay");
 	printf("---------------------------------------------------------------\n");

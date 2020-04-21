@@ -24,7 +24,7 @@ using namespace std;
 #define PORTC "32229" //server C's static port
 
 #define AWS_UDP_PORT 23532
-#define SERVERB_PORT 22532
+#define SERVERC_PORT 22532
 
 struct CalculationRequestInfo
 {
@@ -67,7 +67,7 @@ int main(int argc, const char* argv[]) {
         char recv_buff[1024];
         memset(recv_buff, 'z', 1024);
 		if (recvfrom (udp_sockfd, recv_buff, 1024,0, (struct sockaddr *) &udp_client_addr, &udp_client_addr_len) == -1){
-            perror("ServerB Receive Error");
+            perror("Server C Receive Error");
             exit(1);
 		}
         memset(&received_buff, 0, sizeof received_buff);
@@ -81,7 +81,7 @@ int main(int argc, const char* argv[]) {
         long long file_size = received_buff.file_size;
 
         // fill in some information in output message
-        output_msg.trans_time = file_size / (8 * tran_v);
+        output_msg.trans_time = file_size / tran_v;
 
         // iterate through all vertices and calculate prop time and end to end time
         for (int idx = 0; idx < 10; idx++) {
@@ -101,10 +101,10 @@ int main(int argc, const char* argv[]) {
         memset(send_buff, 0, 1024);
         memcpy(send_buff, &output_msg, sizeof output_msg);
 		if (sendto(udp_sockfd, send_buff, sizeof send_buff, 0, (const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
-			perror("ServerB Response Error");
+			perror("Server C Response Error");
 			exit(1);
 		}
-		printf("The Server B has finished sending the output to AWS.\n");
+		printf("The Server C has finished sending the output to AWS.\n");
     	}
 	close(udp_sockfd);
 	return 0;
@@ -120,7 +120,7 @@ void create_and_bind_udp_socket() {
     }
     memset(&udp_server_addr, 0, sizeof(udp_server_addr));
 	udp_server_addr.sin_family = AF_INET;
-	udp_server_addr.sin_port   = htons(SERVERB_PORT);
+	udp_server_addr.sin_port   = htons(SERVERC_PORT);
 	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     // bind the socket with server address
@@ -130,12 +130,12 @@ void create_and_bind_udp_socket() {
 	}
 
     // print the onscreen message
-    printf("The Server B is up and running using UDP on port <%d>.\n",SERVERB_PORT);
+    printf("The Server C is up and running using UDP on port <%d>.\n",SERVERC_PORT);
 }
 
 /* Show the received message from aws on screen */
 void show_received_msg() {
-	printf("The Server B has received data for calculation:\n");
+	printf("The Server C has received data for calculation:\n");
 	printf("* Propagation speed: <%.2f> km/s\n", received_buff.prop_speed);
 	printf("* Transmission speed: <%.2f> Bytes/s\n", received_buff.tran_speed);
     
@@ -151,7 +151,7 @@ void show_received_msg() {
 /* Show the calculation results after calculation */
 void show_calculation_result() {
     // print onscreen message
-	printf("The Server B has finished the calculation of the delays:\n");
+	printf("The Server C has finished the calculation of the delays:\n");
 	printf("---------------------------------------------------------------\n");
 	printf("%-8s\t%-8s\t%-8s\t%-8s\n", "Destination", "Tt", "Tp", "Delay");
 	printf("---------------------------------------------------------------\n");
