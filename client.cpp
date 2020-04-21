@@ -21,7 +21,8 @@ struct ComputeRequestInfo
 {
 	int			map_id;
 	int			src_vertex_idx;
-	long long	file_size;
+	int			file_size;
+	int			dest_vertex_idx;
 };
 
 struct CalculationResponseInfo
@@ -53,11 +54,9 @@ int main(int argc, const char* argv[]){
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
-	string input_fisrt = argv[1];
-	char id = input_fisrt.c_str()[0];
-	cur_request.map_id = id;
+	cur_request.map_id = argv[1][0];
 	cur_request.src_vertex_idx = atoi(argv[2]);
-	cur_request.file_size = (long long)atof(argv[3]);
+	cur_request.file_size = atoi(argv[3]);
 
 	// create tcp client;
 	// reference: Beej Guide
@@ -104,7 +103,7 @@ int main(int argc, const char* argv[]){
 		close(tcp_sockfd);
 		exit(1);
 	}
-	printf("The client has sent query to AWS using TCP: start vertex <%d>; map id <%c>; file size <%lld> bits.\n", cur_request.src_vertex_idx, (char)cur_request.map_id, cur_request.file_size);
+	printf("The client has sent query to AWS using TCP: start vertex <%d>; map id <%c>; file size <%d> bits.\n", cur_request.src_vertex_idx, (char)cur_request.map_id, cur_request.file_size);
 
 	char recv_buf[1024];
 	memset(recv_buf, 'z', 1024);
@@ -133,7 +132,7 @@ void show_results(CalculationResponseInfo received_info) {
 		int cur_min_len = received_info.min_path_dist[idx];
 		double prop_time = received_info.prop_time[idx];
         double end_to_end = received_info.end_to_end[idx];
-		if (cur_min_len > 0) {
+		if ((cur_min_len > 0) || (idx == 0 && cur_min_len == 0)) {
 			printf("%-8d\t%-8d\t%-8.2f\t%-8.2f\t%-8.2f\n", cur_des, cur_min_len ,trans_time, prop_time, end_to_end);
 		}
 	}

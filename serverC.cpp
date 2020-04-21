@@ -161,7 +161,7 @@ void show_calculation_result() {
         int cur_len = output_msg.min_path_dist[idx];
         double prop_time = output_msg.prop_time[idx];
         double end_to_end = output_msg.end_to_end[idx];
-        if (cur_len > 0) {
+        if ((cur_len > 0) || (idx == 0 && cur_len == 0)) {
             printf("%-8d\t%-8.2f\t%-8.2f\t%-8.2f\n", cur_des, trans_time, prop_time, end_to_end);
         }
     }

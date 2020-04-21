@@ -29,7 +29,7 @@ struct ComputeRequestInfo
 {
 	int			map_id;
 	int			src_vertex_idx;
-	long long	file_size;
+	int         file_size;
 };
 
 struct PathForwardInfo
@@ -124,7 +124,7 @@ int main(int argc, const char* argv[]){
 		socklen_t tcp_length = sizeof tcp_cliser_addr;
 		getsockname(tcp_sockfd_client,(struct sockaddr*) &tcp_cliser_addr, &tcp_length);
 		// print onscreen message
-		printf("The AWS has received map ID <%c>, start vertex <%d> and file size <%lld> bits from the client using TCP over port <%d>.\n", (char)input_msg.map_id, input_msg.src_vertex_idx, input_msg.file_size, ntohs(tcp_cliser_addr.sin_port));	
+		printf("The AWS has received map ID <%c>, start vertex <%d> and file size <%d> bits from the client using TCP over port <%d>.\n", (char)input_msg.map_id, input_msg.src_vertex_idx, input_msg.file_size, ntohs(tcp_cliser_addr.sin_port));	
 
 		// send message to serverA
 		send_to_serverA();
@@ -255,7 +255,7 @@ void receive_from_serverA() {
         for (int idx = 0; idx < 10; idx++) {
             int cur_des = received_buff.min_path_vertex[idx];
             int cur_len = received_buff.min_path_dist[idx];
-            if (cur_len > 0) {
+            if((cur_len > 0) || (idx == 0 && cur_len == 0)){
                 printf("%-16d\t%-16d\t\t\n", cur_des, cur_len);
             }
         }
@@ -301,7 +301,7 @@ void receive_from_serverC() {
 		int cur_len = received_delay.min_path_dist[idx];
 		double prop_time = received_delay.prop_time[idx];
 		double end_to_end = received_delay.end_to_end[idx];
-		if (cur_len > 0) {
+		if ((cur_len > 0) || (idx == 0 && cur_len == 0)) {
 			printf("%-8d\t%-8.2f\t%-8.2f\t%-8.2f\n", cur_des, trans_time, prop_time, end_to_end);
 		}
 	}

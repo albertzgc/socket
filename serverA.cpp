@@ -140,8 +140,12 @@ int main(int argc, const char* argv[]) {
 			while(iter != result.end()) {
 				int cur_ver = iter -> first;
 				int cur_dist = iter -> second;
+				cout << cur_ver << " " << cur_dist << endl;
 				response.min_path_vertex[idx] = cur_ver;
 				response.min_path_dist[idx] = cur_dist;
+				if(cur_ver == 56){
+					break;
+				}
 				idx++;
 				iter++;
 			}
@@ -270,7 +274,7 @@ void path_finding(int src, int index, map<int, int> &result) {
 	set<int> vertices = maps[index].vertice;
 
 	// cur_graph stores every vertex and its adjacent vertices along with the distance between them
-	map<int, vector<pair<int, int> > > cur_graph = maps[index].graph;
+	map<int, vector<pair<int, int>>> cur_graph = maps[index].graph;
 
 	set<int>::iterator iter = vertices.begin();
 	// isVisited map stores whether a vertex has beeb visited
