@@ -28,6 +28,7 @@ using namespace std;
 #define MAP_FILE "map1.txt"
 #define PORTA "3490" //server A's static port
 // format to store the vertex infomation from map.txt
+#define MAX_BUF_LEN 8192
 struct MapInfo{
 	char map_id;
 	double prop_speed;
@@ -35,6 +36,8 @@ struct MapInfo{
 	set<int> vertice;
 	int num_edges;
 	map<int, vector<pair<int, int> > >	graph;
+	int src_vertex;
+	string map_string;
 };
 
 struct PathForwardInfo{
@@ -78,9 +81,9 @@ int main(int argc, const char* argv[]) {
 		// receive map id and starting vertex from aws
 		socklen_t udp_client_addr_len = sizeof udp_client_addr;
 		// reference: Beej Guide
-		char recv_buf[1024];
+		char recv_buf[MAX_BUF_LEN];
 		int numbytes;
-		memset(recv_buf, 0, 1024);
+		memset(recv_buf, 0, MAX_BUF_LEN);
 		if ((numbytes = recvfrom(udp_sockfd,recv_buf, sizeof recv_buf,0,
 			(struct sockaddr *) &udp_client_addr, &udp_client_addr_len)) == -1) {
 			perror("ServerA Receive Error");
@@ -127,11 +130,11 @@ int main(int argc, const char* argv[]) {
 			}
 			index++;
 		}
-			if(index != 51){
+		if(index != 51){
 			// using Dijkstra's to find the shortest path and store into result
 			map<int, int> result;
 			int path[11];
-
+			maps[index].src_vertex = src_vertex;
 			path_finding(src_vertex, index, result, path);
 			for(int l = path[0]-1; l > 0; l--){
 				cout << path[l] << " ";
@@ -158,15 +161,16 @@ int main(int argc, const char* argv[]) {
 				iter++;
 			}
 
-			char send_buf[1024];
-			memset(send_buf, 0, 1024);
-			memcpy(send_buf, &response, sizeof response);
+			char send_buf[MAX_BUF_LEN];
+			memset(send_buf, 0, MAX_BUF_LEN);
+			memcpy(send_buf, &maps[index].map_string, sizeof maps[index]);
+			string send_message = (maps[index].map_string);
 			// send path finding result to the AWS
 			// reference: Beej Guide
-			if (sendto(udp_sockfd, send_buf, sizeof send_buf, 0, 
+			if (sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_buf, 0, 
 				(const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
-				perror("ServerA Response Error");
-				exit(1);
+					perror("ServerA Response Error");
+					exit(1);
 			}
 			printf("The Server A has sent Graph to AWS.\n");
 		}
@@ -187,19 +191,23 @@ void map_construction() {
 			num_of_maps++;
 			idx++;
 			i = 0;
+			maps[idx].map_string = "";
 		}
 		if (i == 0) { // if i = 0, current line has map id
 			maps[idx].map_id = line.c_str()[0];
+			maps[idx].map_string = maps[idx].map_string + line + "-";
 		}
 		else if (i == 1) { // if i = 1, current line is for propagation speed
 			maps[idx].prop_speed = stold(line.c_str());
+			maps[idx].map_string = maps[idx].map_string + line + "-";
 		}
 		else if (i == 2) { // if i = 2, current line is for transmission speed
 			maps[idx].tran_speed = stold(line.c_str());
-			}
+			maps[idx].map_string = maps[idx].map_string + line + "-";
+		}
 		else if (i > 2) { // if i > 2, then current line has vertex information 
 			// split current line with space and save each line into fileValues
-			vector<string> fileValues;
+			maps[idx].map_string = maps[idx].map_string + line + ",";vector<string> fileValues;
 			fileValues.push_back(line);
 			string ind = fileValues[0];
 			int stop_index = ind.find_first_of(" ");
