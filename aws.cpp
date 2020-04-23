@@ -37,12 +37,14 @@ struct MapInfo{
 	int num_edges;
 	map<int, vector<pair<int, double> > >	graph;
 	int src_vertex;
+    int dest_vertex;
 	string map_string;
 };
 struct ComputeRequestInfo
 {
 	int			map_id;
 	int			src_vertex_idx;
+	int			dest_vertex_idx;
 	int         file_size;
 };
 
@@ -123,7 +125,7 @@ int main(int argc, const char* argv[]){
 		// receive message from the client and put it into input_msg
 		// reference: Beej Guide
 		char recv_buf1[MAX_BUF_LEN];
-		memset(recv_buf1, 'z', MAX_BUF_LEN);
+		memset(recv_buf1, 0, MAX_BUF_LEN);
 		int num_of_bytes_read = recv(new_tcp_sockfd, recv_buf1, sizeof recv_buf1, 0);
 		if(num_of_bytes_read < 0) {
 			perror("Reading Stream Message Error");
@@ -225,22 +227,15 @@ void create_and_bind_tcp_client() {
 /* Send message to serverA */
 void send_to_serverA() {
 	// build message which will be sent to server A
-	//forward_msg.map_id = input_msg.map_id;
-	//forward_msg.src_vertex_idx = input_msg.src_vertex_idx;
 
     string send_message = std::to_string(input_msg.map_id) + " " + std::to_string(input_msg.src_vertex_idx);
-
-	char send_buf1[MAX_BUF_LEN];
-	memset(send_buf1, 0, MAX_BUF_LEN);
-	memcpy(send_buf1, &forward_msg, sizeof forward_msg);
-
 	// send message to serverA via udp
 	memset(&udp_server_addr,0, sizeof udp_server_addr);
 	udp_server_addr.sin_family = AF_INET;
 	udp_server_addr.sin_port = htons(SERVERA_PORT);
 	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-	sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_buf1, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
+	sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_message, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
 	
 	// print onscreen message
 	printf("The AWS has sent Map ID <%c> and starting vertex <%d> to server A using UDP over port <%d>.\n", (char)forward_msg.map_id, forward_msg.src_vertex_idx, AWS_UDP_PORT);
@@ -265,24 +260,6 @@ void receive_from_serverA() {
     else{
         recv_buf2[numbytes] = '\0';
         received_buff.map_string = string(recv_buf2);
-        //memset(&received_buff, 0, sizeof received_buff);
-        //memcpy(&received_buff, recv_buf2, sizeof received_buff);
-        /*
-        // output onscreen message
-        printf("The AWS has received shortest paths from serverA:\n");
-        printf("------------------------------------------------\n");
-        printf("%-16s\t%-16s\t\n", "Destination", "Min Length");
-        printf("------------------------------------------------\n");
-        // iterate the result
-        for (int idx = 0; idx < 10; idx++) {
-            int cur_des = received_buff.min_path_vertex[idx];
-            int cur_len = received_buff.min_path_dist[idx];
-            if((cur_len > 0) || (idx == 0 && cur_len == 0)){
-                printf("%-16d\t%-16d\t\t\n", cur_des, cur_len);
-            }
-        }
-        printf("------------------------------------------------\n");
-        */
     }
 }
 
@@ -293,17 +270,14 @@ void send_to_serverC() {
 	udp_server_addr.sin_port = htons(SERVERC_PORT);
 	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    string send_message2 (received_buff.map_string);
-
-	char send_buf2[MAX_BUF_LEN];
-	memset(send_buf2, 0, MAX_BUF_LEN);
-	memcpy(send_buf2, &received_buff, sizeof received_buff);
+    string send_message2 = std::to_string(input_msg.src_vertex_idx) + "-" + std::to_string(input_msg.dest_vertex_idx) + "-" + std::to_string(input_msg.file_size) + "-" + (received_buff.map_string);
 	sendto(udp_sockfd, (void*) send_message2.c_str(), MAX_BUF_LEN, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
 
 	//print the onscreen message
 	printf("The AWS has sent path length, propagation speed and transmission speed to server C using UDP over port <%d>.\n", 
 		AWS_UDP_PORT);
-    cout << "MapInfo: " << received_buff.map_string << endl;
+    //todo remove
+    //cout << "MapInfo: " << received_buff.map_string << endl;
 }
 
 /* Receive response from serverC */

@@ -34,7 +34,10 @@ struct MapInfo{
 	int num_edges;
 	map<int, vector<pair<int, double> > >	graph;
 	int src_vertex;
+    int dest_vertex;
 	string map_string;
+    double shortest_path_len;
+    int file_size;
 };
 struct CalculationRequestInfo
 {
@@ -56,11 +59,7 @@ struct CalculationResponseInfo
 
 void create_and_bind_udp_socket();
 
-void show_received_msg();
-
-void show_calculation_result();
-
-void path_finding(int, map<int, int>&, int*);
+void path_finding(int, int, map<int, double>&, int*);
 
 void show_path_finding_msg(map<int, int>&, int);
 
@@ -75,6 +74,15 @@ void parse_map_string(string map_string){
     int second_end;
     double dist;
     int stop_index = map_string.find_first_of("-");
+    received_buff.src_vertex = atoi(map_string.substr(0, stop_index).c_str());
+    map_string = map_string.substr(stop_index+1);
+    stop_index = map_string.find_first_of("-");
+    received_buff.dest_vertex = atoi(map_string.substr(0, stop_index).c_str());
+    map_string = map_string.substr(stop_index+1);
+    stop_index = map_string.find_first_of("-");
+    received_buff.file_size = atoi(map_string.substr(0, stop_index).c_str());
+    map_string = map_string.substr(stop_index+1);
+    stop_index = map_string.find_first_of("-");
     received_buff.map_id = map_string.substr(0, stop_index).c_str()[0];
     map_string = map_string.substr(stop_index+1);
     stop_index = map_string.find_first_of("-");
@@ -146,46 +154,21 @@ int main(int argc, const char* argv[]) {
             exit(1);
 		}
         recv_buff[numbytes] = '\0';
-        //memset(&received_buff, 0, sizeof received_buff);
-        //memcpy(&received_buff, recv_buff, sizeof received_buff);
         received_buff.map_string = string(recv_buff);
         parse_map_string(received_buff.map_string);
-        //cout << "map string: " << received_buff.map_string << endl;
-        //cout << "MapInfo: " << received_buff.map_id << endl;   
-        //cout << "Source: " << received_buff.src_vertex << endl;
-        map<int, int> result;
+
+        map<int, double> result;
 		int path[11];
         int src_vertex = received_buff.src_vertex;
         //todo change src_vertex
-		path_finding(35, result, path);
+		path_finding(received_buff.src_vertex, received_buff.dest_vertex, result, path);
 		for(int l = path[0]-1; l > 0; l--){
 			cout << path[l] << " ";
 		}
+        cout << endl;
 		// print out dijkstra's result on screen
-		show_path_finding_msg(result, src_vertex);
-        /*
-        // print the onscreen message
-        show_received_msg();
-		
-        double prop_v = received_buff.prop_speed;
-        double tran_v = received_buff.tran_speed;
-        double file_size = received_buff.file_size;
+		//show_path_finding_msg(result, src_vertex);
 
-        // fill in some information in output message
-        output_msg.trans_time = file_size / tran_v;
-
-        // iterate through all vertices and calculate prop time and end to end time
-        for (int idx = 0; idx < 10; idx++) {
-  			int cur_len = received_buff.min_path_dist[idx];
-            output_msg.vertex[idx] = received_buff.min_path_vertex[idx];
-            output_msg.min_path_dist[idx] = received_buff.min_path_dist[idx];
-            output_msg.prop_time[idx] = cur_len / prop_v;
-            output_msg.end_to_end[idx] = cur_len / prop_v + output_msg.trans_time;
-        }
-
-    	// show the onscreen message of the calculations
-        show_calculation_result();
-        */
         // send three delays(output message) to AWS server
         // reference: Beej Guide
         char send_buff[MAX_BUF_LEN];
@@ -230,7 +213,7 @@ void create_and_bind_udp_socket() {
 
 
 // Function to print shortest 
-// path from source to j 
+// path from source to dest j 
 // using parent array 
 void printPath(int parent[], int j, int path[], int k) 
 { 
@@ -247,7 +230,7 @@ void printPath(int parent[], int j, int path[], int k)
 	path[k] = j;
 } 
 /* find the shortest path from given source vertex to any other vertices */
-void path_finding(int src, map<int, int> &result, int path[]) {
+void path_finding(int src, int dest, map<int, double> &result, int path[]) {
 	// store the vertices involved
 	int parent[100];
 	for(int l = 0; l < 100; l++){
@@ -275,7 +258,7 @@ void path_finding(int src, map<int, int> &result, int path[]) {
 	map<int, bool>::iterator iter_vis = isVisited.begin();
 	while(iter_vis != isVisited.end()) {
 		int u = -1;
-		int MIN = INF;
+		double MIN = INF;
 		map<int, bool>::iterator iter_vis1 = isVisited.begin();
 		while (iter_vis1 != isVisited.end()) {
 			int cur_ver = iter_vis1 -> first;
@@ -295,7 +278,7 @@ void path_finding(int src, map<int, int> &result, int path[]) {
 
 		for (uint i = 0; i < neighbors.size(); i++) {
 			int v = neighbors[i].first;
-			int dist = neighbors[i].second;
+			double dist = neighbors[i].second;
 			// if the vertex hasn't been visted and we find a shorter path than the previous one
 			if (isVisited[v] == false && result[u] + dist < result[v]) {
 				parent[v] = u;
@@ -304,12 +287,30 @@ void path_finding(int src, map<int, int> &result, int path[]) {
 		}
 		iter_vis++;
 	}
-	//path[0] == path size
+    //1 is used because path[0] == path size, so filling in path starts at [1]
     //todo need to add in variables instead of hard code
-	printPath(parent, 56, path, 1);
+	printPath(parent,dest, path, 1);
+    cout << endl;
+    map<int, double>::iterator dist_iter = result.begin();
+    int cur_des = dist_iter->first;
+    double cur_len = dist_iter->second;
+	while (dist_iter != result.end()) {
+		if (cur_des == dest) {
+			dist_iter++;
+			break;
+		}
+		dist_iter++;
+        cur_des = dist_iter->first;
+        cur_len = dist_iter->second;
+	}
+    cout << cur_des << ": " << cur_len << endl;
+    received_buff.shortest_path_len = cur_len;
+    cout << "transmission delay: " << received_buff.shortest_path_len / received_buff.tran_speed << endl;
+    cout << "propagation delay: " << received_buff.file_size / received_buff.prop_speed << endl;
 }
 
 /* print the path finding results on the screen */
+/*
 void show_path_finding_msg(map<int, int>&result, int src_vertex) {
 	printf("The Server A has identified the shortest paths:\n");
 	printf("------------------------------------------------\n");
@@ -317,59 +318,7 @@ void show_path_finding_msg(map<int, int>&result, int src_vertex) {
 	printf("------------------------------------------------\n");
 
 	// iterate through the result
-	map<int, int>::iterator iter = result.begin();
-	while (iter != result.end()) {
-		int cur_des = iter->first;
-		int cur_len = iter->second;
-		if (cur_des == src_vertex) {
-			iter++;
-			continue;
-		}
-		printf("%-16d\t%-16d\t\t\n", cur_des, cur_len);
-		iter++;
-	}
+	
 	printf("------------------------------------------------\n");
-}
-
-/* Show the received message from aws on screen */
-/*
-void show_received_msg() {
-	printf("The Server C has received data for calculation:\n");
-	printf("* Propagation speed: <%.2f> km/s\n", received_buff.prop_speed);
-	printf("* Transmission speed: <%.2f> KB/s\n", received_buff.tran_speed);
-    
-	for (int idx = 0; idx < 10; idx++) {
-        int cur_des = received_buff.min_path_vertex[idx];
-        int cur_len = received_buff.min_path_dist[idx];
-        if (cur_len > 0) {
-            	printf("* Path length for destination <%d> : <%d>\n", cur_des, cur_len);
-        }
-    }
-}
-*/
-
-
-
-
-
-/* Show the calculation results after calculation */
-/*
-void show_calculation_result() {
-    // print onscreen message
-	printf("The Server C has finished the calculation of the delays:\n");
-	printf("---------------------------------------------------------------\n");
-	printf("%-8s\t%-8s\t%-8s\t%-8s\n", "Destination", "Tt", "Tp", "Delay");
-	printf("---------------------------------------------------------------\n");
-    double trans_time = output_msg.trans_time;
-    for (int idx = 0; idx < 10; idx++) {
-        int cur_des = output_msg.vertex[idx];
-        int cur_len = output_msg.min_path_dist[idx];
-        double prop_time = output_msg.prop_time[idx];
-        double end_to_end = output_msg.end_to_end[idx];
-        if ((cur_len > 0) || (idx == 0 && cur_len == 0)) {
-            printf("%-8d\t%-8.2f\t%-8.2f\t%-8.2f\n", cur_des, trans_time, prop_time, end_to_end);
-        }
-    }
-	printf("---------------------------------------------------------------\n");
 }
 */

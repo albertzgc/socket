@@ -23,8 +23,8 @@ struct ComputeRequestInfo
 {
 	int			map_id;
 	int			src_vertex_idx;
-	int			file_size;
 	int			dest_vertex_idx;
+	int			file_size;
 };
 
 struct CalculationResponseInfo
@@ -47,7 +47,7 @@ int main(int argc, const char* argv[]){
 	struct addrinfo hints;
 	ComputeRequestInfo cur_request;
 	
-	if (argc != 4) {
+	if (argc != 5) {
 		fprintf(stderr, "Input Error\n");
 		exit(1);
 	}
@@ -58,7 +58,8 @@ int main(int argc, const char* argv[]){
 
 	cur_request.map_id = argv[1][0];
 	cur_request.src_vertex_idx = atoi(argv[2]);
-	cur_request.file_size = atoi(argv[3]);
+	cur_request.dest_vertex_idx = atoi(argv[3]);
+	cur_request.file_size = atoi(argv[4]);
 
 	// create tcp client;
 	// reference: Beej Guide
