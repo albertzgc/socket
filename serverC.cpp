@@ -23,8 +23,8 @@ using namespace std;
 
 #define PORTC "32229" //server C's static port
 
-#define AWS_UDP_PORT 23532
-#define SERVERC_PORT 22532
+#define AWS_UDP_PORT 33229
+#define SERVERC_PORT 32229
 
 struct CalculationRequestInfo
 {
@@ -32,7 +32,7 @@ struct CalculationRequestInfo
 	int     	min_path_dist[10];
 	double		prop_speed;
 	double		tran_speed;
-	long long	file_size;
+	double      file_size;
 };
 
 struct CalculationResponseInfo
@@ -65,7 +65,7 @@ int main(int argc, const char* argv[]) {
         // reference: Beej Guide
         socklen_t udp_client_addr_len = sizeof udp_client_addr;
         char recv_buff[1024];
-        memset(recv_buff, 'z', 1024);
+        memset(recv_buff, 0, 1024);
 		if (recvfrom (udp_sockfd, recv_buff, 1024,0, (struct sockaddr *) &udp_client_addr, &udp_client_addr_len) == -1){
             perror("Server C Receive Error");
             exit(1);
@@ -78,7 +78,7 @@ int main(int argc, const char* argv[]) {
 		
         double prop_v = received_buff.prop_speed;
         double tran_v = received_buff.tran_speed;
-        long long file_size = received_buff.file_size;
+        double file_size = received_buff.file_size;
 
         // fill in some information in output message
         output_msg.trans_time = file_size / tran_v;
@@ -137,7 +137,7 @@ void create_and_bind_udp_socket() {
 void show_received_msg() {
 	printf("The Server C has received data for calculation:\n");
 	printf("* Propagation speed: <%.2f> km/s\n", received_buff.prop_speed);
-	printf("* Transmission speed: <%.2f> Bytes/s\n", received_buff.tran_speed);
+	printf("* Transmission speed: <%.2f> KB/s\n", received_buff.tran_speed);
     
 	for (int idx = 0; idx < 10; idx++) {
         int cur_des = received_buff.min_path_vertex[idx];

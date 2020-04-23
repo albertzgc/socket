@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 
+#include <vector>
 #include <string>
 
 using namespace std;
@@ -17,6 +18,7 @@ using namespace std;
 #define PORTA "3490" // the port client will be connecting to 
 //TAKEN FROM BEEJ-TUTORIAL START
 #define SERVERPORT "4950"	// the port users will be connecting to
+#define AWS_TCP_CLIENT_PORT 34229
 struct ComputeRequestInfo
 {
 	int			map_id;
@@ -80,7 +82,7 @@ int main(int argc, const char* argv[]){
 	
 	memset(&tcp_server_addr, 0, sizeof tcp_server_addr);
 	tcp_server_addr.sin_family = AF_INET;
-	tcp_server_addr.sin_port = htons(24532);
+	tcp_server_addr.sin_port = htons(AWS_TCP_CLIENT_PORT);
 	tcp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	printf("The client is up and running.\n");
 

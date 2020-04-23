@@ -23,8 +23,9 @@
 using namespace std;
 
 #define INT_MAX 2147483647
-#define SERVERA_UDP_PORT 21532
+#define SERVERA_UDP_PORT 30229
 #define MAXDATASIZE 10000
+#define MAP_FILE "map1.txt"
 #define PORTA "3490" //server A's static port
 // format to store the vertex infomation from map.txt
 struct MapInfo{
@@ -52,7 +53,7 @@ void map_construction();
 
 void create_and_bind_udp_socket();
 
-void path_finding(int, int, map<int, int>&);
+void path_finding(int, int, map<int, int>&, int*);
 
 void show_path_finding_msg(map<int, int>&, int);
 
@@ -66,7 +67,7 @@ PathReponseInfo response;
 
 int main(int argc, const char* argv[]) {
 	// print boot up msg
-	cout << "The Server A is up and running using UDP on port <" << SERVERA_UDP_PORT << ">." << endl;
+	cout << "The Server A is up and running using UDP on port <" << SERVERA_UDP_PORT << ">" << endl;
 
 	map_construction();
 
@@ -101,10 +102,13 @@ int main(int argc, const char* argv[]) {
 
 		//memset(&received_buff, 0, sizeof received_buff);
 		//memcpy(&received_buff, recv_buf, sizeof recv_buf);
-
-		cout << "The Server A has received input for finding shortest paths: starting vertex <"<< recv_payload[1].c_str() << "> of map <" << (char)atoi(recv_payload[0].c_str()) << ">." << endl;
-		char id = atoi(recv_payload[0].c_str());
 		int src_vertex = atoi((recv_payload[1].c_str()));
+		char id = atoi(recv_payload[0].c_str());
+
+		cout << "The Server A has received input for finding shortest paths: starting vertex <"<< src_vertex << "> of map <" << id << ">." << endl;
+		/*
+		cout << "The Server A has received input for finding graph of map <" << (char)atoi(recv_payload[0].c_str()) << ">." << endl;
+		*/
 
 		// locate the index of the map whose map_id is required id
 		int index = 0;
@@ -126,8 +130,12 @@ int main(int argc, const char* argv[]) {
 			if(index != 51){
 			// using Dijkstra's to find the shortest path and store into result
 			map<int, int> result;
-			path_finding(src_vertex, index, result);
+			int path[11];
 
+			path_finding(src_vertex, index, result, path);
+			for(int l = path[0]-1; l > 0; l--){
+				cout << path[l] << " ";
+			}
 			// print out dijkstra's result on screen
 			show_path_finding_msg(result, src_vertex);
 
@@ -160,7 +168,7 @@ int main(int argc, const char* argv[]) {
 				perror("ServerA Response Error");
 				exit(1);
 			}
-			printf("The Server A has sent the shortest paths to AWS.\n");
+			printf("The Server A has sent Graph to AWS.\n");
 		}
 	}
 	close(udp_sockfd);
@@ -169,7 +177,7 @@ int main(int argc, const char* argv[]) {
 
 /* Read map.txt and save the information into result map, then create the onscreen message */
 void map_construction() {
-	ifstream mapFile("map1.txt");
+	ifstream mapFile(MAP_FILE);
 	string line;
 	int idx = -1;
 	int i = 0; // store the # of line counting from map_id line
@@ -267,10 +275,31 @@ void create_and_bind_udp_socket() {
 		exit(1);
 	}
 }
-
+// Function to print shortest 
+// path from source to j 
+// using parent array 
+void printPath(int parent[], int j, int path[], int k) 
+{ 
+      
+    // Base Case : If j is source 
+    if (parent[j] == 101) {
+		path[0] = k;
+        return; 
+	}
+  
+    printPath(parent, parent[j], path, k+1); 
+  
+    //printf("%d ", j); 
+	path[k] = j;
+} 
 /* find the shortest path from given source vertex to any other vertices */
-void path_finding(int src, int index, map<int, int> &result) {
+void path_finding(int src, int index, map<int, int> &result, int path[]) {
 	// store the vertices involved
+	int parent[100];
+	for(int l = 0; l < 100; l++){
+		parent[l] = 0;
+	}
+	parent[0] = 101;
 	set<int> vertices = maps[index].vertice;
 
 	// cur_graph stores every vertex and its adjacent vertices along with the distance between them
@@ -315,11 +344,14 @@ void path_finding(int src, int index, map<int, int> &result) {
 			int dist = neighbors[i].second;
 			// if the vertex hasn't been visted and we find a shorter path than the previous one
 			if (isVisited[v] == false && result[u] + dist < result[v]) {
+				parent[v] = u;
 				result[v] = result[u] + dist;
 			}
 		}
 		iter_vis++;
 	}
+	//path[0] == path size
+	printPath(parent, 56, path, 1);
 }
 
 /* print the path finding results on the screen */

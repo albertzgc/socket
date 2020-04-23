@@ -20,10 +20,11 @@ using namespace std;
 #define UDPPORT "34229" //AWS's static UDP port
 
 
-#define AWS_UDP_PORT 23532
-#define AWS_TCP_CLIENT_PORT 24532
-#define SERVERA_PORT 21532
-#define SERVERC_PORT 22532
+#define AWS_UDP_PORT 33229
+#define AWS_TCP_CLIENT_PORT 34229
+#define SERVERA_PORT 30229
+#define SERVERB_PORT 31229
+#define SERVERC_PORT 32229
 
 struct ComputeRequestInfo
 {
@@ -52,7 +53,7 @@ struct CalculationRequestInfo
 	int			min_path_dist[10];
 	double		prop_speed;
 	double		tran_speed;
-	long long	file_size;
+	double	    file_size;
 };
 
 struct CalculationResponseInfo

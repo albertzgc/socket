@@ -23,6 +23,7 @@
 using namespace std;
 
 #define INT_MAX 2147483647
+#define SERVERB_PORT 31229
 #define PORTB 31229 //server B's static port
 // format to store the vertex infomation from map.txt
 struct MapInfo{
