@@ -1,88 +1,75 @@
-# Project Title
+# EE450 Spring 2020 Socket Programming Project
 
-One Paragraph of project description goes here
+Albert Chan
+8764674229
 
-## Getting Started
+## What I have done
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
+I implemented 5 components: 3 backend servers(2 database-like servers and a computing server), a main server (AWS) that is the link for processing client requests and the 3 backend servers, and a client program for a user to interface with the whole system.
 
-### Prerequisites
+## Code files
 
-What things you need to install the software and how to install them
+aws.cpp: The main server that communicates with the client and 3 backend servers. It boots up setting up its UDP and TCP sockets waiting for a request from client via TCP. It then takes the requests map id and queries server A if it contains it, if it doesn't then it will query server B. If neither has the map id, it will send an appropriate error to client. Otherwise it will receive map info that it will use to check for the requested vertices, send an error to client if it can't find the vertices. Otherwise it will forward the user request query and map data to server C. It will wait for server C to send back the calculations, then forward back to client.
 
+client.cpp: Program allowing a user to interface with the system. Boots up and places the command line arguments into a struct, sets up a tcp socket to forward request to AWS. Prints the response from AWS whether it is an error or the results of a successful request.
+
+serverA.cpp and serverB.cpp: Starts up reading their respective map file to build an array of map ids and strings of the map data to be parsed by AWS and serverC, then sets up UDP port for requests from AWS. Iterates through its array of maps for a matching id and forwards the map data in string form. Sends an error if map id is not found.
+
+serverC.cpp: Sets up UDP port and waits for request from AWS, takes the received string and parses to build a map and retrieve user query. Uses source and destination vertice to run Dijkstra to find shortest path, store the path (each hop) into an array, calculate delays, store all those results into a struct to return to AWS.
+
+## Message format
+
+memset() and memcpy(), for sending data as structs:
+client to AWS
 ```
-Give examples
+struct InputArguments
+{
+	int			map_id;
+	int			source_vertex;
+	int			dest_vertex;
+	int			file_size;
+};
 ```
-
-### Installing
-
-A step by step series of examples that tell you how to get a development env running
-
-Say what the step will be
-
+AWS to client, for successful result data
+server C to AWS
 ```
-Give the example
-```
-
-And repeat
-
-```
-until finished
-```
-
-End with an example of getting some data out of the system or using it for a little demo
-
-## Running the tests
-
-Explain how to run the automated tests for this system
-
-### Break down into end to end tests
-
-Explain what these tests test and why
-
-```
-Give an example
-```
-
-### And coding style tests
-
-Explain what these tests test and why
-
-```
-Give an example
+struct CalculationResults
+{
+    int         path[11];
+    double      distance;
+    double      tran_delay;
+    double      prop_delay;
+    double      total_delay;
+};
 ```
 
-## Deployment
 
-Add additional notes about how to deploy this on a live system
+string to char[] buffer, strings containing the map data:
+AWS to client, for error
+```
+"No map"
+"no source"
+"no destination"
+```
+AWS to server A and server B
+```
+"A"
+```
+server A and server B to AWS, both successful map data and error; aws to server C
+```
+"(<source vertex>-<destination vertex>-<file size>-)<mapID>-<propagation speed>-<transmission speed>-<first end vertex> <second end vertex> <distance between the two vertices>,<first end vertex> <second end vertex> <distance between the two vertices>... ... ...<first end vertex> <second end vertex> <distance between the two vertices>"
+```
 
-## Built With
+## Idiosyncrasy
 
-* [Dropwizard](http://www.dropwizard.io/1.0.2/docs/) - The web framework used
-* [Maven](https://maven.apache.org/) - Dependency Management
-* [ROME](https://rometools.github.io/rome/) - Used to generate RSS Feeds
+I could have improved performance of server A and server B by having another map data structure that holds the map id and the index in the map array to quickly find the index, rather than iterate through the whole index each query which would be return faster results if more maps are added. But as this project is limited to 52 maps, and I didn't realize this until the time writing, I did not implement it yet.
 
-## Contributing
+## Reused code
 
-Please read [CONTRIBUTING.md](https://gist.github.com/PurpleBooth/b24679402957c63ec426) for details on our code of conduct, and the process for submitting pull requests to us.
+For socket related code I used snippets from the Beej Guide to Networking Programming, code relating to the UDP and TCP sockets have comments.
 
-## Versioning
-
-We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/your/project/tags). 
-
-## Authors
-
-* **Billie Thompson** - *Initial work* - [PurpleBooth](https://github.com/PurpleBooth)
-
-See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
-
-## Acknowledgments
-
-* Hat tip to anyone whose code was used
-* Inspiration
-* etc
-
+For graph and Dijkstra's algorithm I used(also commented in serverC.cpp):
+https://stackoverflow.com/questions/53184552/dijkstras-algorithm-w-adjacency-list-map-c
+https://algorithmsinfinite.blogspot.com/2018/10/dijkstras-algorithm-shortest-path_10.html
+https://en.wikipedia.org/wiki/Dijkstra's_algorithm
+https://www.geeksforgeeks.org/printing-paths-dijkstras-shortest-path-algorithm/
