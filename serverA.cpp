@@ -16,8 +16,6 @@
 #include <string>
 #include <vector>
 
-
-//TAKEN FROM BEEJ-TUTORIAL START
 using namespace std;
 
 #define SERVERA_UDP_PORT 30229

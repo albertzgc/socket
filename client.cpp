@@ -10,18 +10,18 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 
+#include <ios>
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <string>
 #include <math.h>
 
 using namespace std;
 
-#define PORTA "3490" // the port client will be connecting to 
-//TAKEN FROM BEEJ-TUTORIAL START
-#define SERVERPORT "4950"	// the port users will be connecting to
 #define AWS_TCP_CLIENT_PORT 34229
-struct ComputeRequestInfo
+#define MAX_BUF_LEN 2048
+struct InputArguments
 {
 	int			map_id;
 	int			src_vertex_idx;
@@ -36,129 +36,107 @@ struct CalculationResults
     double      tran_delay;
     double      prop_delay;
 };
-
-void show_results(CalculationResults);
-
-CalculationResults received_info;
+CalculationResults calc_results;
 
 int main(int argc, const char* argv[]){
 
-	int tcp_sockfd;
-	struct sockaddr_in tcp_server_addr;
+	int sockfd;
+	struct sockaddr_in addr_len;
 	struct addrinfo hints;
-	ComputeRequestInfo cur_request;
+	InputArguments user_arg;
 	
+	//retrieve user input arguments
 	if (argc != 5) {
-		fprintf(stderr, "Input Error\n");
+		cout << "Wrong number of inputs" << endl;
 		exit(1);
 	}
+	user_arg.map_id = argv[1][0];
+	user_arg.src_vertex_idx = atoi(argv[2]);
+	user_arg.dest_vertex_idx = atoi(argv[3]);
+	user_arg.file_size = atoi(argv[4]);
 
+	//from Beej Guide
+	//create client tcp socket
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
-
-	cur_request.map_id = argv[1][0];
-	cur_request.src_vertex_idx = atoi(argv[2]);
-	cur_request.dest_vertex_idx = atoi(argv[3]);
-	cur_request.file_size = atoi(argv[4]);
-
-	// create tcp client;
-	// reference: Beej Guide
-	if ((tcp_sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1) {
-		perror("Client TCP Socket Create Error");
+	if ((sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1) {
+		cout << "Failed to create client TCP socket" << endl;
+		exit(1);
+	}
+	memset(&addr_len, 0, sizeof addr_len);
+	addr_len.sin_family = AF_INET;
+	addr_len.sin_port = htons(AWS_TCP_CLIENT_PORT);
+	addr_len.sin_addr.s_addr = inet_addr("127.0.0.1");//assign hard-coded loopback address
+	cout << "The client is up and running" << endl;
+	if (connect(sockfd, (struct sockaddr*)&addr_len, sizeof addr_len) == -1) {
+		cout << " Could not make connection" << endl;
+		close(sockfd);
 		exit(1);
 	}
 
-	/*// reference: EE450 Fall 2019 Project
-	socklen_t tcp_client_len = sizeof tcp_client_addr;
-	// reference: Beej Guide
-	if(bind(tcp_sockfd, (struct sockaddr*) &tcp_client_addr, tcp_client_len) == -1){
-		perror("Client Bind Error");
+	//package user arguments into char buffer to send to aws for requested data
+	char user_req[MAX_BUF_LEN];
+	memset(user_req, 0, MAX_BUF_LEN);
+	memcpy(user_req, &user_arg, sizeof(user_arg));
+	if (send(sockfd, user_req, sizeof(user_req), 0) == -1) {
+		cout << "Failed to send message" << endl;
+		close(sockfd);
 		exit(1);
 	}
-	int getsock_check = getsockname(tcp_sockfd,(struct sockaddr*) &tcp_client_addr, &tcp_client_len);
-	if (getsock_check == -1) {
-		perror("Getsockname Error");
-		exit(1);
-	}*/
-	
-	memset(&tcp_server_addr, 0, sizeof tcp_server_addr);
-	tcp_server_addr.sin_family = AF_INET;
-	tcp_server_addr.sin_port = htons(AWS_TCP_CLIENT_PORT);
-	tcp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	printf("The client is up and running.\n");
-
-	// do TCP connection
-	// reference: Beej Guide
-	if (connect(tcp_sockfd, (struct sockaddr*)&tcp_server_addr, sizeof tcp_server_addr) == -1) {
-		perror("Connection Error");
-		close(tcp_sockfd);
-		exit(1);
-	}
-
-	// send message to aws
-	// cur_request is the buffer that read info into
-	// string send_buf;
-	char send_buf[1024];
-	memset(send_buf, 0, 1024);
-	memcpy(send_buf, &cur_request, sizeof(cur_request));
-	if (send(tcp_sockfd, send_buf, sizeof(send_buf), 0) == -1) {
-		perror("Message Send Error");
-		close(tcp_sockfd);
-		exit(1);
-	}
-	printf("The client has sent query to AWS using TCP: start vertex <%d>; map id <%c>; file size <%d> bits.\n", cur_request.src_vertex_idx, (char)cur_request.map_id, cur_request.file_size);
-
-	char recv_buf[1024];
-	memset(recv_buf, 0, 1024);
-	if (recv(tcp_sockfd, recv_buf, sizeof recv_buf, 0) == -1) {
-		perror("Receive Error");
-		close(tcp_sockfd);
+	cout << "The client has sent query to AWS using TCP: start vertex "<< user_arg.src_vertex_idx <<"; destination vertex " << user_arg.dest_vertex_idx << ", map " << (char)user_arg.map_id << "; file size " << user_arg.file_size << endl;
+	//receive the aws result data in char buffer form
+	char aws_response[MAX_BUF_LEN];
+	memset(aws_response, 0, MAX_BUF_LEN);
+	if (recv(sockfd, aws_response, sizeof aws_response, 0) == -1) {
+		cout << "Failed to receive packet" << endl;
+		close(sockfd);
 		exit(1);
 	}
 	char no_map_found[] = "No map";
 	char no_source[] = "no source";
 	char no_destination[] = "no destination";
-	if(!(strcmp(recv_buf, no_map_found))){
-		cout << "No map id " << (char)cur_request.map_id << " found" << endl;
-		close(tcp_sockfd);
+	if(!(strcmp(aws_response, no_map_found))){
+		cout << "No map id " << (char)user_arg.map_id << " found" << endl;
+		close(sockfd);
 	}
-	else if(!(strcmp(recv_buf, no_source))){
-		cout << "No vertex id " << cur_request.src_vertex_idx << " found" << endl;
-		close(tcp_sockfd);
+	else if(!(strcmp(aws_response, no_source))){
+		cout << "No vertex id " << user_arg.src_vertex_idx << " found" << endl;
+		close(sockfd);
 	}
-	else if(!(strcmp(recv_buf, no_destination))){
-		cout << "No vertex id " << cur_request.dest_vertex_idx << " found" << endl;
-		close(tcp_sockfd);
+	else if(!(strcmp(aws_response, no_destination))){
+		cout << "No vertex id " << user_arg.dest_vertex_idx << " found" << endl;
+		close(sockfd);
 	}
 	else{
-		memset(&received_info, 0, sizeof received_info);
-		memcpy(&received_info, recv_buf, sizeof received_info);
+		//unpackage the aws result data from char buffer to my own data structure
+		memset(&calc_results, 0, sizeof calc_results);
+		memcpy(&calc_results, aws_response, sizeof calc_results);
 
 		cout << endl << "The client has recevied results from AWS:" << endl;
 		cout << "------------------------------------------------------" << endl;
 		cout << "Source  Destination    Min Length    Tt    Tp    Delay" << endl;
 		cout << "------------------------------------------------------" << endl;
-		cout << cur_request.src_vertex_idx << "      " << cur_request.dest_vertex_idx << "             ";
+		cout << user_arg.src_vertex_idx << "      " << user_arg.dest_vertex_idx << "             ";
 		int round_precision = 100;
 		streamsize ss = cout.precision();
-		cout << received_info.distance << "       ";
+		cout << calc_results.distance << "       ";
 		cout.precision(2);
-		cout << round(received_info.tran_delay*round_precision)/round_precision << "  ";
-		cout << round(received_info.prop_delay*round_precision)/round_precision << "   ";
-		cout << round((received_info.tran_delay+received_info.prop_delay)*round_precision)/round_precision << endl;
+		cout << fixed << round(calc_results.tran_delay*round_precision)/round_precision << "  ";
+		cout << fixed << round(calc_results.prop_delay*round_precision)/round_precision << "   ";
+		cout << fixed << round((calc_results.tran_delay+calc_results.prop_delay)*round_precision)/round_precision << endl;
 		cout.precision(ss);
 		cout << "------------------------------------------------------" << endl;
 		cout << "Shortest path: ";
-		for(int l = received_info.path[0]; l > 0; l--){
+		for(int l = calc_results.path[0]; l > 0; l--){
 			if(l == 1){
-				cout << received_info.path[l];
+				cout << calc_results.path[l];
 			}
 			else{
-				cout << received_info.path[l] << " -- "; 
+				cout << calc_results.path[l] << " -- "; 
 			}
 		}
 		cout << endl;
-		close(tcp_sockfd);
+		close(sockfd);
 	}
 }
