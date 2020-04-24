@@ -13,11 +13,14 @@
 #include <sstream>
 #include <fstream>
 #include <vector>
+#include <ios>
 #include <iostream>
+#include <iomanip>
 #include <cctype>
 #include <ctype.h>
 #include <map>
 #include <set>
+#include <math.h>
 
 using namespace std;
 
@@ -25,11 +28,11 @@ using namespace std;
 
 #define AWS_UDP_PORT 33229
 #define SERVERC_PORT 32229
-#define MAX_BUF_LEN 10240
+#define MAX_BUF_LEN 2048
 struct MapInfo{
 	char map_id;
 	double prop_speed;
-	double tran_speed;
+	int tran_speed;
 	set<int> vertice;
 	int num_edges;
 	map<int, vector<pair<int, double> > >	graph;
@@ -39,22 +42,12 @@ struct MapInfo{
     double shortest_path_len;
     int file_size;
 };
-struct CalculationRequestInfo
+struct CalculationResults
 {
-	int     	min_path_vertex[10];
-	int     	min_path_dist[10];
-	double		prop_speed;
-	double		tran_speed;
-	double      file_size;
-};
-
-struct CalculationResponseInfo
-{
-	double	trans_time;
-	int     vertex[10];
-	int     min_path_dist[10];
-	double  prop_time[10];
-	double  end_to_end[10];
+    int         path[11];
+    double      distance;
+    double      tran_delay;
+    double      prop_delay;
 };
 
 void create_and_bind_udp_socket();
@@ -66,13 +59,14 @@ void show_path_finding_msg(map<int, int>&, int);
 int udp_sockfd;
 struct sockaddr_in udp_server_addr, udp_client_addr;
 
-//CalculationRequestInfo received_buff;
 MapInfo received_buff;
-CalculationResponseInfo output_msg;
+CalculationResults output_msg;
+const int INF = (int)1000000000;
 void parse_map_string(string map_string){
     int first_end;
     int second_end;
     double dist;
+    streamsize ss = cout.precision();
     int stop_index = map_string.find_first_of("-");
     received_buff.src_vertex = atoi(map_string.substr(0, stop_index).c_str());
     map_string = map_string.substr(stop_index+1);
@@ -92,6 +86,13 @@ void parse_map_string(string map_string){
     received_buff.tran_speed = atof(map_string.substr(0, stop_index).c_str());
     map_string = map_string.substr(stop_index+1);
     stop_index = map_string.find_first_of(" ");
+
+    cout << "The Server C has received data for calculation: " << endl;
+    cout << "* Propagation Speed: " << setprecision(2) << fixed << received_buff.prop_speed << " km/s" << endl;
+    cout.precision(ss);
+    cout << "* Transmission speed: " << received_buff.tran_speed << " KB/s" << endl;
+    cout << "* map ID: " << received_buff.map_id << endl;
+    cout << "* Source ID: " << received_buff.src_vertex << "    Destination ID:" << received_buff.dest_vertex << endl;
 
     while(stop_index != string::npos){
         first_end = atoi(map_string.substr(0, stop_index).c_str());
@@ -137,7 +138,6 @@ void clear_map(){
     received_buff.graph.clear();
     received_buff.vertice.clear();
 }
-const int INF = (int)1000000000;
 int main(int argc, const char* argv[]) {
 	// create a udp socket
 	create_and_bind_udp_socket();
@@ -162,10 +162,32 @@ int main(int argc, const char* argv[]) {
         int src_vertex = received_buff.src_vertex;
         //todo change src_vertex
 		path_finding(received_buff.src_vertex, received_buff.dest_vertex, result, path);
-		for(int l = path[0]-1; l > 0; l--){
-			cout << path[l] << " ";
+        cout << "The Server C has finished the calculation: " << endl;
+        cout << "Shortest path: ";
+		for(int l = path[0]; l > 0; l--){
+            if(l == 1){
+                output_msg.path[l] = path[l];
+                cout << path[l];
+            }
+            else{
+                output_msg.path[l] = path[l];
+			    cout << path[l] << " -- "; 
+            }
 		}
         cout << endl;
+        int round_precision = 100;
+        streamsize ss = cout.precision();
+        cout.precision(2);
+        cout << "Shortest distance: " << received_buff.shortest_path_len << " km" << endl;
+        double transmission_delay = received_buff.shortest_path_len / received_buff.tran_speed;
+        double propagation_delay = received_buff.file_size / received_buff.prop_speed;
+        cout << "Transmission delay: " << round(transmission_delay*round_precision)/round_precision << " s" << endl;
+        cout << "Propagation delay: " << round(propagation_delay*round_precision)/round_precision << " s" << endl << endl;
+        cout.precision(ss);
+        output_msg.path[0] = path[0];
+        output_msg.distance = received_buff.shortest_path_len;
+        output_msg.tran_delay = transmission_delay;
+        output_msg.prop_delay = propagation_delay;
 		// print out dijkstra's result on screen
 		//show_path_finding_msg(result, src_vertex);
 
@@ -179,7 +201,7 @@ int main(int argc, const char* argv[]) {
 			exit(1);
 		}
         clear_map();
-		printf("The Server C has finished sending the output to AWS.\n");
+		cout << "The Server C has finished sending the output to AWS" << endl << endl;
     	}
 	close(udp_sockfd);
 	return 0;
@@ -208,25 +230,22 @@ void create_and_bind_udp_socket() {
 	}
 
     // print the onscreen message
-    printf("The Server C is up and running using UDP on port <%d>.\n",SERVERC_PORT);
+    cout << "The Server C is up and running using UDP on port " << SERVERC_PORT << endl << endl;
 }
 
 
 // Function to print shortest 
 // path from source to dest j 
 // using parent array 
+// reference: Geeks for Geeks
 void printPath(int parent[], int j, int path[], int k) 
 { 
-      
     // Base Case : If j is source 
     if (parent[j] == 101) {
-		path[0] = k;
+		path[0] = k-1;
         return; 
 	}
-  
     printPath(parent, parent[j], path, k+1); 
-  
-    //printf("%d ", j); 
 	path[k] = j;
 } 
 /* find the shortest path from given source vertex to any other vertices */
@@ -288,7 +307,6 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
 		iter_vis++;
 	}
     //1 is used because path[0] == path size, so filling in path starts at [1]
-    //todo need to add in variables instead of hard code
 	printPath(parent,dest, path, 1);
     cout << endl;
     map<int, double>::iterator dist_iter = result.begin();
@@ -303,22 +321,6 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
         cur_des = dist_iter->first;
         cur_len = dist_iter->second;
 	}
-    cout << cur_des << ": " << cur_len << endl;
     received_buff.shortest_path_len = cur_len;
-    cout << "transmission delay: " << received_buff.shortest_path_len / received_buff.tran_speed << endl;
-    cout << "propagation delay: " << received_buff.file_size / received_buff.prop_speed << endl;
-}
 
-/* print the path finding results on the screen */
-/*
-void show_path_finding_msg(map<int, int>&result, int src_vertex) {
-	printf("The Server A has identified the shortest paths:\n");
-	printf("------------------------------------------------\n");
-	printf("%-16s\t%-16s\t\n", "Destination", "Min Length");
-	printf("------------------------------------------------\n");
-
-	// iterate through the result
-	
-	printf("------------------------------------------------\n");
 }
-*/

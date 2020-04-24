@@ -10,8 +10,10 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 
+#include <iostream>
 #include <vector>
 #include <string>
+#include <math.h>
 
 using namespace std;
 
@@ -27,18 +29,17 @@ struct ComputeRequestInfo
 	int			file_size;
 };
 
-struct CalculationResponseInfo
+struct CalculationResults
 {
- 	double		trans_time;
-	int			vertex[10];
-	int			min_path_dist[10];
-	double  	prop_time[10];
-	double  	end_to_end[10];
+    int         path[11];
+    double      distance;
+    double      tran_delay;
+    double      prop_delay;
 };
 
-void show_results(CalculationResponseInfo);
+void show_results(CalculationResults);
 
-CalculationResponseInfo received_info;
+CalculationResults received_info;
 
 int main(int argc, const char* argv[]){
 
@@ -109,35 +110,55 @@ int main(int argc, const char* argv[]){
 	printf("The client has sent query to AWS using TCP: start vertex <%d>; map id <%c>; file size <%d> bits.\n", cur_request.src_vertex_idx, (char)cur_request.map_id, cur_request.file_size);
 
 	char recv_buf[1024];
-	memset(recv_buf, 'z', 1024);
+	memset(recv_buf, 0, 1024);
 	if (recv(tcp_sockfd, recv_buf, sizeof recv_buf, 0) == -1) {
 		perror("Receive Error");
 		close(tcp_sockfd);
 		exit(1);
 	}
-	memset(&received_info, 0, sizeof received_info);
-	memcpy(&received_info, recv_buf, sizeof received_info);
-
-	show_results(received_info);
-	close(tcp_sockfd);
-}
-
-/* Show the results from aws */
-void show_results(CalculationResponseInfo received_info) {
-	// print onscreen message
-	printf("The client has received results from AWS:\n");
-	printf("------------------------------------------------------------------------------\n");
-	printf("%-8s\t%-8s\t%-8s\t%-8s\t%-8s\n", "Destination", "Min Length", "Tt", "Tp", "Delay");
-	printf("------------------------------------------------------------------------------\n");
-    double trans_time = received_info.trans_time;
-	for (int idx = 0; idx < 10; idx++) {
-		int cur_des = received_info.vertex[idx];
-		int cur_min_len = received_info.min_path_dist[idx];
-		double prop_time = received_info.prop_time[idx];
-        double end_to_end = received_info.end_to_end[idx];
-		if ((cur_min_len > 0) || (idx == 0 && cur_min_len == 0)) {
-			printf("%-8d\t%-8d\t%-8.2f\t%-8.2f\t%-8.2f\n", cur_des, cur_min_len ,trans_time, prop_time, end_to_end);
-		}
+	char no_map_found[] = "No map";
+	char no_source[] = "no source";
+	char no_destination[] = "no destination";
+	if(!(strcmp(recv_buf, no_map_found))){
+		cout << "No map id " << (char)cur_request.map_id << " found" << endl;
+		close(tcp_sockfd);
 	}
-	printf("------------------------------------------------------------------------------\n");
+	else if(!(strcmp(recv_buf, no_source))){
+		cout << "No vertex id " << cur_request.src_vertex_idx << " found" << endl;
+		close(tcp_sockfd);
+	}
+	else if(!(strcmp(recv_buf, no_destination))){
+		cout << "No vertex id " << cur_request.dest_vertex_idx << " found" << endl;
+		close(tcp_sockfd);
+	}
+	else{
+		memset(&received_info, 0, sizeof received_info);
+		memcpy(&received_info, recv_buf, sizeof received_info);
+
+		cout << endl << "The client has recevied results from AWS:" << endl;
+		cout << "------------------------------------------------------" << endl;
+		cout << "Source  Destination    Min Length    Tt    Tp    Delay" << endl;
+		cout << "------------------------------------------------------" << endl;
+		cout << cur_request.src_vertex_idx << "      " << cur_request.dest_vertex_idx << "             ";
+		int round_precision = 100;
+		streamsize ss = cout.precision();
+		cout << received_info.distance << "       ";
+		cout.precision(2);
+		cout << round(received_info.tran_delay*round_precision)/round_precision << "  ";
+		cout << round(received_info.prop_delay*round_precision)/round_precision << "   ";
+		cout << round((received_info.tran_delay+received_info.prop_delay)*round_precision)/round_precision << endl;
+		cout.precision(ss);
+		cout << "------------------------------------------------------" << endl;
+		cout << "Shortest path: ";
+		for(int l = received_info.path[0]; l > 0; l--){
+			if(l == 1){
+				cout << received_info.path[l];
+			}
+			else{
+				cout << received_info.path[l] << " -- "; 
+			}
+		}
+		cout << endl;
+		close(tcp_sockfd);
+	}
 }

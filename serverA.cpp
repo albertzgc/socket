@@ -23,7 +23,7 @@ using namespace std;
 #define SERVERA_UDP_PORT 30229
 #define MAP_FILE "map1.txt"
 // format to store the vertex infomation from map.txt
-#define MAX_BUF_LEN 8192
+#define MAX_BUF_LEN 2048
 struct MapInfo{
 	char map_id;
 	string map_string;
@@ -39,7 +39,7 @@ MapInfo maps[52];
 
 int main(int argc, const char* argv[]) {
 	// print boot up msg
-	cout << "The Server A is up and running using UDP on port <" << SERVERA_UDP_PORT << ">" << endl;
+	cout << "The Server A is up and running using UDP on port " << SERVERA_UDP_PORT << endl;
 
 	map_construction();
 
@@ -66,13 +66,14 @@ int main(int argc, const char* argv[]) {
 		recv_payload.push_back(parsed_string);
 		char id = atoi(recv_payload[0].c_str());
 
-		cout << "The Server A has received input for finding graph of map <" << id << ">." << endl;
+		cout << "The Server A has received input for finding graph of map " << id << endl;
 
 		// locate the index of the map whose map_id is required id
 		int index = 0;
 		while (maps[index].map_id != id) {
 			//todo check for error
 			if(index == 52){
+				cout << "The Server A does not have the required graph id " << id << endl;
 				string graph_not_found_message = "Graph not Found";
 				// send path finding result to the AWS
 				// reference: Beej Guide
@@ -81,12 +82,12 @@ int main(int argc, const char* argv[]) {
 					perror("ServerA Response Error");
 					exit(1);
 				}
-				cout << "The Server A has sent \"" << graph_not_found_message << "\" to AWS." << endl;
+				cout << "The Server A has sent \"" << graph_not_found_message << "\" to AWS." << endl << endl;
 				break;
 			}
 			index++;
 		}
-		if(index != 51){
+		if(index != 52){
 			char send_buf[MAX_BUF_LEN];
 			memset(send_buf, 0, MAX_BUF_LEN);
 			memcpy(send_buf, &maps[index].map_string, sizeof maps[index]);
@@ -98,7 +99,7 @@ int main(int argc, const char* argv[]) {
 					perror("ServerA Response Error");
 					exit(1);
 			}
-			printf("The Server A has sent Graph to AWS.\n");
+			cout << "The Server A has sent Graph to AWS."  << endl << endl;
 		}
 	}
 	close(udp_sockfd);

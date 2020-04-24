@@ -10,11 +10,13 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 
-
+#include <ios>
 #include <iostream>
+#include <iomanip>
 #include <map>
 #include <vector>
 #include <set>
+#include <math.h>
 
 using namespace std;
 
@@ -32,7 +34,7 @@ using namespace std;
 struct MapInfo{
 	char map_id;
 	double prop_speed;
-	double tran_speed;
+	int tran_speed;
 	set<int> vertice;
 	int num_edges;
 	map<int, vector<pair<int, double> > >	graph;
@@ -53,31 +55,12 @@ struct PathForwardInfo
 	int			map_id;
 	int			src_vertex_idx;
 };
-
-struct PathResponseInfo
+struct CalculationResults
 {
-	int			min_path_vertex[10];
-	int 		min_path_dist[10];
-	double 		prop_speed;
-	double 		tran_speed;
-};
-
-struct CalculationRequestInfo
-{
-	int			min_path_vertex[10];
-	int			min_path_dist[10];
-	double		prop_speed;
-	double		tran_speed;
-	double	    file_size;
-};
-
-struct CalculationResponseInfo
-{
-	double		trans_time;
-	int			vertex[10];
-	int			min_path_dist[10];
-	double  	prop_time[10];
-	double  	end_to_end[10];
+    int         path[11];
+    double      distance;
+    double      tran_delay;
+    double      prop_delay;
 };
 
 void create_and_bind_udp_socket();
@@ -86,7 +69,7 @@ void create_and_bind_tcp_client();
 
 void send_to_serverA();
 
-void receive_from_serverA();
+void receive_from_serverA(int);
 
 void send_to_serverC();
 
@@ -97,9 +80,52 @@ struct sockaddr_in udp_server_addr, udp_client_addr, tcp_server_addr, tcp_cliser
 ComputeRequestInfo input_msg;
 PathForwardInfo forward_msg;
 MapInfo received_buff;
-CalculationRequestInfo cal_request;
-CalculationResponseInfo received_delay;
+CalculationResults received_delay;
 
+void parse_map_string(string map_string){
+    set<int> vertices;
+    int first_end;
+    int second_end;
+    double dist;
+    int stop_index = map_string.find_first_of("-");
+    received_buff.map_id = map_string.substr(0, stop_index).c_str()[0];
+    map_string = map_string.substr(stop_index+1);
+    stop_index = map_string.find_first_of("-");
+    received_buff.prop_speed = atof(map_string.substr(0, stop_index).c_str());
+    map_string = map_string.substr(stop_index+1);
+    stop_index = map_string.find_first_of("-");
+    received_buff.tran_speed = atof(map_string.substr(0, stop_index).c_str());
+    map_string = map_string.substr(stop_index+1);
+    stop_index = map_string.find_first_of(" ");
+
+    while(stop_index != string::npos){
+        first_end = atoi(map_string.substr(0, stop_index).c_str());
+        map_string = map_string.substr(stop_index + 1);
+        stop_index = map_string.find_first_of(" ");
+        second_end = atoi(map_string.substr(0, stop_index).c_str());
+        map_string = map_string.substr(stop_index + 1);
+        stop_index = map_string.find_first_of(",");
+
+        received_buff.num_edges++;
+        vertices.insert(first_end);
+        vertices.insert(second_end);
+        
+        map_string = map_string.substr(stop_index + 1);
+        stop_index = map_string.find_first_of(" ");
+    }
+    received_buff.vertice = vertices;
+}
+void no_map_error_to_client(int new_tcp_sockfd, string no_vertice_found){
+    int sent = sendto(new_tcp_sockfd, no_vertice_found.c_str(), sizeof no_vertice_found, 0, (struct sockaddr *) &tcp_cliser_addr, sizeof tcp_cliser_addr);
+    // check whether send successfully
+    if (sent == -1) {
+        perror("Connection Error");
+        close(tcp_sockfd_client);
+        exit(1);
+    }
+    // print onscreen message
+    //cout << "Map id: " << (char)input_msg.map_id << ", not found in the map file in server A, sending error to client using TCP over port " << ntohs(tcp_cliser_addr.sin_port) << endl;
+}
 int main(int argc, const char* argv[]){
 	create_and_bind_udp_socket();
 	create_and_bind_tcp_client();
@@ -113,8 +139,8 @@ int main(int argc, const char* argv[]){
 	while (true) {
 		// accept an incoming tcp connection
 		// reference: Beej Guide
-    		socklen_t tcp_client_addr_len = sizeof tcp_cliser_addr;
-    		int new_tcp_sockfd = accept(tcp_sockfd_client, (struct sockaddr *)&tcp_cliser_addr, &tcp_client_addr_len);
+        socklen_t tcp_client_addr_len = sizeof tcp_cliser_addr;
+        int new_tcp_sockfd = accept(tcp_sockfd_client, (struct sockaddr *)&tcp_cliser_addr, &tcp_client_addr_len);
 
 		// check whether accept successfully
 		if(new_tcp_sockfd == -1 ){
@@ -140,30 +166,31 @@ int main(int argc, const char* argv[]){
 		socklen_t tcp_length = sizeof tcp_cliser_addr;
 		getsockname(tcp_sockfd_client,(struct sockaddr*) &tcp_cliser_addr, &tcp_length);
 		// print onscreen message
-		printf("The AWS has received map ID <%c>, start vertex <%d> and file size <%d> bits from the client using TCP over port <%d>.\n", (char)input_msg.map_id, input_msg.src_vertex_idx, input_msg.file_size, ntohs(tcp_cliser_addr.sin_port));	
+		cout << "The AWS has received map ID " << (char)input_msg.map_id << ", start vertex " << input_msg.src_vertex_idx << ", destination vertex " << input_msg.dest_vertex_idx << ", and file size " << input_msg.file_size << " from the client using TCP over port " << ntohs(tcp_cliser_addr.sin_port) << endl;
 
 		// send message to serverA
 		send_to_serverA();
 
 		// receive from serverA
-		receive_from_serverA();
-        /*
-		// construct the information which will be sent to serverC
-		cal_request.prop_speed = received_buff.prop_speed;
-		cal_request.tran_speed = received_buff.tran_speed;
-		cal_request.file_size = input_msg.file_size;
-
-		for (int idx = 0; idx < 10; idx++) {
-			cal_request.min_path_vertex[idx] = received_buff.min_path_vertex[idx];
-			cal_request.min_path_dist[idx] = received_buff.min_path_dist[idx];
-		}
-        */
-		// send request to serverC
-		send_to_serverC();
-
-		// receive from serverC
-		receive_from_serverC();
-
+		receive_from_serverA(new_tcp_sockfd);
+        parse_map_string(received_buff.map_string);
+        if(!received_buff.vertice.count(input_msg.src_vertex_idx)){
+            cout << input_msg.src_vertex_idx << " (source) vertex not found in the graph, sending error to client using TCP over port "<< ntohs(tcp_cliser_addr.sin_port) << endl;
+            no_map_error_to_client(new_tcp_sockfd, "no source");
+        }
+        else if(!received_buff.vertice.count(input_msg.dest_vertex_idx)){
+            cout << input_msg.dest_vertex_idx << " (destination) vertex not found in the graph, sending error to client using TCP over port "<< ntohs(tcp_cliser_addr.sin_port) << endl;
+            no_map_error_to_client(new_tcp_sockfd, "no destination");
+        }
+        else{
+            cout << "The source and destination vertex are in the graph" << endl;
+            // send request to serverC
+            send_to_serverC();
+            // receive from serverC
+            receive_from_serverC();
+        }
+        received_buff.vertice.clear();
+        //move this to the above else segment
 		char send_buf3[MAX_BUF_LEN];
 		memset(send_buf3, 0, MAX_BUF_LEN);
 		memcpy(send_buf3, &received_delay, sizeof received_delay);
@@ -175,7 +202,7 @@ int main(int argc, const char* argv[]){
 			exit(1);
 		}
 		// print onscreen message
-		printf("The AWS has sent calculated delay to client using TCP over port <%d>.\n", ntohs(tcp_cliser_addr.sin_port));
+		cout << "The AWS has sent calculated results to client using TCP over port " << ntohs(tcp_cliser_addr.sin_port) << endl << endl;
 	}
 	close(tcp_sockfd_client);
 	return 0;
@@ -227,8 +254,7 @@ void create_and_bind_tcp_client() {
 /* Send message to serverA */
 void send_to_serverA() {
 	// build message which will be sent to server A
-
-    string send_message = std::to_string(input_msg.map_id) + " " + std::to_string(input_msg.src_vertex_idx);
+    string send_message = std::to_string(input_msg.map_id) + " ";
 	// send message to serverA via udp
 	memset(&udp_server_addr,0, sizeof udp_server_addr);
 	udp_server_addr.sin_family = AF_INET;
@@ -238,15 +264,26 @@ void send_to_serverA() {
 	sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_message, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
 	
 	// print onscreen message
-	printf("The AWS has sent Map ID <%c> and starting vertex <%d> to server A using UDP over port <%d>.\n", (char)forward_msg.map_id, forward_msg.src_vertex_idx, AWS_UDP_PORT);
+	cout << "The AWS has sent Map ID to server A using UDP over port " << AWS_UDP_PORT << endl;
 }
-
+void no_map_error_to_client(int new_tcp_sockfd){
+    string no_map_found = "No map";
+    int sent = sendto(new_tcp_sockfd, no_map_found.c_str(), sizeof no_map_found, 0, (struct sockaddr *) &tcp_cliser_addr, sizeof tcp_cliser_addr);
+    // check whether send successfully
+    if (sent == -1) {
+        perror("Connection Error");
+        close(tcp_sockfd_client);
+        exit(1);
+    }
+    // print onscreen message
+    cout << "Map id: " << (char)input_msg.map_id << ", not found in the map file in server A, sending error to client using TCP over port " << ntohs(tcp_cliser_addr.sin_port) << endl;
+}
 /* Receive results from serverA */
-void receive_from_serverA() {
+void receive_from_serverA(int new_tcp_sockfd) {
 	// build the container that will receive the msg from A and receive from A
 	socklen_t server_udp_len = sizeof udp_client_addr;
 	char recv_buf2[MAX_BUF_LEN];
-	memset(recv_buf2, 'z', MAX_BUF_LEN);
+	memset(recv_buf2, 0, MAX_BUF_LEN);
     int numbytes;
 	if((numbytes = recvfrom(udp_sockfd, recv_buf2, sizeof recv_buf2, 0, (struct sockaddr*)&udp_client_addr, &server_udp_len)) == -1){
 			perror("ServerA Receive Error");
@@ -255,9 +292,11 @@ void receive_from_serverA() {
     char not_found[] = "Graph not Found";
     //Graph is not in server A
     if(!(strcmp(recv_buf2,not_found))){
-        cout << "The AWS has received map information from server A: " << recv_buf2 << endl;
+        cout << "The AWS has received map information from server A, " << (char)input_msg.map_id << " not found in server A" << endl;
+        no_map_error_to_client(new_tcp_sockfd);
     }
     else{
+        cout << "The AWS has received map information from server A" << endl;
         recv_buf2[numbytes] = '\0';
         received_buff.map_string = string(recv_buf2);
     }
@@ -274,36 +313,35 @@ void send_to_serverC() {
 	sendto(udp_sockfd, (void*) send_message2.c_str(), MAX_BUF_LEN, 0, (struct sockaddr *) &udp_server_addr, sizeof udp_server_addr);
 
 	//print the onscreen message
-	printf("The AWS has sent path length, propagation speed and transmission speed to server C using UDP over port <%d>.\n", 
-		AWS_UDP_PORT);
-    //todo remove
-    //cout << "MapInfo: " << received_buff.map_string << endl;
+	cout << "The AWS has sent map, source ID, destination ID, propagation speed, and transmission speed to server C using UDP over port " << AWS_UDP_PORT << endl;
 }
 
 /* Receive response from serverC */
 void receive_from_serverC() {
 	// build the container that will receive the msg from A and receive from A
 	char recv_buf3[MAX_BUF_LEN];
-	memset(recv_buf3, 'z', MAX_BUF_LEN);
+	memset(recv_buf3, 0, MAX_BUF_LEN);
 	socklen_t server_udp_len = sizeof udp_client_addr;
 	recvfrom(udp_sockfd, recv_buf3, MAX_BUF_LEN, 0, (struct sockaddr*)&udp_client_addr, &server_udp_len);
 	memset(&received_delay, 0, sizeof received_delay);
 	memcpy(&received_delay, recv_buf3, sizeof received_delay);
-
-	// print onscreen message
-	printf("The AWS has received delays from serverC:\n");
-	printf("---------------------------------------------------------------\n");
-	printf("%-8s\t%-8s\t%-8s\t%-8s\n", "Destination", "Tt", "Tp", "Delay");
-	printf("---------------------------------------------------------------\n");
-	double trans_time = received_delay.trans_time;
-	for (int idx = 0; idx < 10; idx++) {
-		int cur_des = received_delay.vertex[idx];
-		int cur_len = received_delay.min_path_dist[idx];
-		double prop_time = received_delay.prop_time[idx];
-		double end_to_end = received_delay.end_to_end[idx];
-		if ((cur_len > 0) || (idx == 0 && cur_len == 0)) {
-			printf("%-8d\t%-8.2f\t%-8.2f\t%-8.2f\n", cur_des, trans_time, prop_time, end_to_end);
+    cout << endl << "The AWS has received results from server C:" << endl;
+    cout << "The Server C has finished the calculation: " << endl;
+        cout << "Shortest path: ";
+		for(int l = received_delay.path[0]; l > 0; l--){
+            if(l == 1){
+                cout << received_delay.path[l];
+            }
+            else{
+			    cout << received_delay.path[l] << " -- "; 
+            }
 		}
-	}
-	printf("---------------------------------------------------------------\n");
+    cout << endl;
+    int round_precision = 100;
+    streamsize ss = cout.precision();
+    cout << "Shortest distance: " << received_delay.distance << " km" << endl;
+    cout.precision(2);
+    cout << "Transmission delay: " << round(received_delay.tran_delay*round_precision)/round_precision << " s" << endl;
+    cout << "Propagation delay: " << round(received_delay.prop_delay*round_precision)/round_precision << " s" << endl << endl;
+    cout.precision(ss);
 }
