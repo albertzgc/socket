@@ -4,19 +4,20 @@ all:
 	g++ -std=c++11 -ggdb -o serverA serverA.cpp
 	g++ -std=c++11 -ggdb -o serverB serverB.cpp
 	g++ -std=c++11 -ggdb -o serverC serverC.cpp
-
+.PHONY: aws
 aws:
-	g++ -std=c++11 -ggdb -o aws aws.cpp
-aws.o:aws.c
-	g++ -g -c -Wall aws.c
+	./aws
 client:
 	g++ -std=c++11 -ggdb -o client client.cpp
+.PHONY: serverA
 serverA:
-	g++ -std=c++11 -ggdb -o serverA serverA.cpp
+	./serverA
+.PHONY: serverB
 serverB:
-	g++ -std=c++11 -ggdb -o serverB serverB.cpp
+	./serverB
+.PHONY: serverC
 serverC:
-	g++ -std=c++11 -ggdb -o serverC serverC.cpp
+	./serverC
 clean:
 	$(RM) aws
 	$(RM) client
