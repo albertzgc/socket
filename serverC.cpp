@@ -27,12 +27,11 @@ using namespace std;
 #define AWS_UDP_PORT 33229
 #define SERVERC_PORT 32229
 #define MAX_BUF_LEN 2048
-#define INFINITE 10000000000;
+#define MAX_DISTANCE 10000;
 struct MapInfo{
 	char map_id;
 	double prop_speed;
 	int tran_speed;
-	set<int> vertice;
 	map<int, vector<pair<int, double> > >	graph;
 	int src_vertex;
     int dest_vertex;
@@ -50,7 +49,7 @@ struct CalculationResults
 
 void create_and_bind_udp_socket();
 
-void path_finding(int, int, map<int, double>&, int*);
+void path_finding(int, int, int*);
 
 void show_path_finding_msg(map<int, int>&, int);
 
@@ -124,8 +123,6 @@ void parse_map_string(string map_string){
             cur_vec.push_back(pair2);
             received_buff.graph[second_end] = cur_vec;
         }
-        received_buff.vertice.insert(first_end);
-        received_buff.vertice.insert(second_end);
         
         map_string = map_string.substr(stop_index + 1);
         stop_index = map_string.find_first_of(" ");
@@ -133,7 +130,6 @@ void parse_map_string(string map_string){
 }
 void clear_map(){
     received_buff.graph.clear();
-    received_buff.vertice.clear();
 }
 int main(int argc, const char* argv[]) {
 	// create a udp socket
@@ -158,7 +154,7 @@ int main(int argc, const char* argv[]) {
 		int path[11];
         int src_vertex = received_buff.src_vertex;
         //todo change src_vertex
-		path_finding(received_buff.src_vertex, received_buff.dest_vertex, result, path);
+		path_finding(received_buff.src_vertex, received_buff.dest_vertex, path);
         cout << "The Server C has finished the calculation: " << endl;
         cout << "Shortest path: ";
 		for(int l = path[0]; l > 0; l--){
@@ -246,28 +242,25 @@ void printPath(int parent[], int j, int path[], int k)
 	path[k] = j;
 } 
 /* find the shortest path from given source vertex to any other vertices */
-void path_finding(int src, int dest, map<int, double> &result, int path[]) {
+void path_finding(int src, int dest, int path[]) {
+    map<int, double> result;
 	// store the vertices involved
 	int parent[100];
 	for(int l = 0; l < 100; l++){
 		parent[l] = 0;
 	}
 	parent[0] = 101;
-	set<int> vertices = received_buff.vertice;
 
 	// cur_graph stores every vertex and its adjacent vertices along with the distance between them
-	//map<int, vector<pair<int, double>>> cur_graph = received_buff.graph;
-
-	//set<int>::iterator iter = vertices.begin();
     map<int, vector<pair<int, double>>>::iterator iter = received_buff.graph.begin();
 	// isVisited map stores whether a vertex has beeb visited
 	map<int, bool> isVisited;
-	// init every node distance to INFINITE
+	// init every node distance to MAX_DISTANCE
 	while(iter != received_buff.graph.end()) {
         pair<int, double> cur_ver;
         cur_ver.first = iter->first;
 		if (cur_ver.first != src) {
-			result[cur_ver.first] = INFINITE;
+			result[cur_ver.first] = MAX_DISTANCE;
 		}
 		isVisited[cur_ver.first] = false;
 		iter++;
@@ -276,7 +269,7 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
 	map<int, bool>::iterator iter_vis = isVisited.begin();
 	while(iter_vis != isVisited.end()) {
 		int u = -1;
-		double MIN = INFINITE;
+		double MIN = MAX_DISTANCE;
 		map<int, bool>::iterator iter_vis1 = isVisited.begin();
 		while (iter_vis1 != isVisited.end()) {
 			int cur_ver = iter_vis1 -> first;
@@ -287,18 +280,15 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
 			}
 			iter_vis1++;
 		}
-		if (u == -1){
-			return;
-		}
 		isVisited[u] = true;
 
 		vector<pair<int, double> > neighbors = received_buff.graph[u];
 
-		for (uint i = 0; i < neighbors.size(); i++) {
+		for (int i = 0; i < neighbors.size(); i++) {
 			int v = neighbors[i].first;
 			double dist = neighbors[i].second;
 			// if the vertex hasn't been visted and we find a shorter path than the previous one
-			if (isVisited[v] == false && result[u] + dist < result[v]) {
+			if (result[u] + dist < result[v]) {
 				parent[v] = u;
 				result[v] = result[u] + dist;
 			}
@@ -308,6 +298,7 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
     //1 is used because path[0] == path size, so filling in path starts at [1]
 	printPath(parent,dest, path, 1);
     cout << endl;
+    //after finding shortest paths for all nodes from source, iterate to destination node to store in our struct
     map<int, double>::iterator dist_iter = result.begin();
     int cur_des = dist_iter->first;
     double cur_len = dist_iter->second;
@@ -321,5 +312,4 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
         cur_len = dist_iter->second;
 	}
     received_buff.shortest_path_len = cur_len;
-
 }
