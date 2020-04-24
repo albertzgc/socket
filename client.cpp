@@ -35,6 +35,7 @@ struct CalculationResults
     double      distance;
     double      tran_delay;
     double      prop_delay;
+    double      total_delay;
 };
 CalculationResults calc_results;
 
@@ -128,7 +129,7 @@ int main(int argc, const char* argv[]){
 		cout.precision(2);
 		cout << fixed << round(calc_results.tran_delay*round_precision)/round_precision << "  ";
 		cout << fixed << round(calc_results.prop_delay*round_precision)/round_precision << "   ";
-		cout << fixed << round((calc_results.tran_delay+calc_results.prop_delay)*round_precision)/round_precision << endl;
+		cout << fixed << round((calc_results.total_delay)*round_precision)/round_precision << endl;
 		cout.precision(ss);
 		cout << "------------------------------------------------------" << endl;
 		cout << "Shortest path: ";

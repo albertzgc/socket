@@ -44,6 +44,7 @@ struct CalculationResults
     double      distance;
     double      tran_delay;
     double      prop_delay;
+    double      total_delay;
 };
 int udp_sockfd, tcp_sockfd;
 struct sockaddr_in udp_addr, udp_client_addr, tcp_addr, tcp_client_addr;

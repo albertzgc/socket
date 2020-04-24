@@ -44,6 +44,7 @@ struct CalculationResults
     double      distance;
     double      tran_delay;
     double      prop_delay;
+    double      total_delay;
 };
 int udp_sockfd;
 struct sockaddr_in udp_server_addr, udp_client_addr;
@@ -260,6 +261,7 @@ int main(int argc, const char* argv[]) {
         calc_results.distance = complete_user_req.shortest_path_len;
         calc_results.tran_delay = transmission_delay;
         calc_results.prop_delay = propagation_delay;
+        calc_results.total_delay = transmission_delay + propagation_delay;
 
         //from Beej  Guide
         //placing the calculated results into a char buffer to be unpackaged in aws into our own struct
