@@ -109,7 +109,7 @@ int main(int argc, const char* argv[]){
 		close(sockfd);
 	}
 	else{
-		//unpackage the aws result data from char buffer to my own data structure
+		//unpackage the aws result data from char buffer to my own struct
 		memset(&calc_results, 0, sizeof calc_results);
 		memcpy(&calc_results, aws_response, sizeof calc_results);
 

@@ -24,17 +24,15 @@
 
 using namespace std;
 
-#define PORTC "32229" //server C's static port
-
 #define AWS_UDP_PORT 33229
 #define SERVERC_PORT 32229
 #define MAX_BUF_LEN 2048
+#define INFINITE 10000000000;
 struct MapInfo{
 	char map_id;
 	double prop_speed;
 	int tran_speed;
 	set<int> vertice;
-	int num_edges;
 	map<int, vector<pair<int, double> > >	graph;
 	int src_vertex;
     int dest_vertex;
@@ -60,9 +58,9 @@ int udp_sockfd;
 struct sockaddr_in udp_server_addr, udp_client_addr;
 
 MapInfo received_buff;
-CalculationResults output_msg;
-const int INF = (int)1000000000;
+CalculationResults calc_results;
 void parse_map_string(string map_string){
+    //parse the string containing the complete user request, also contains requested map info and construct the graph
     int first_end;
     int second_end;
     double dist;
@@ -86,14 +84,14 @@ void parse_map_string(string map_string){
     received_buff.tran_speed = atof(map_string.substr(0, stop_index).c_str());
     map_string = map_string.substr(stop_index+1);
     stop_index = map_string.find_first_of(" ");
-
+    //print the received data message
     cout << "The Server C has received data for calculation: " << endl;
     cout << "* Propagation Speed: " << setprecision(2) << fixed << received_buff.prop_speed << " km/s" << endl;
     cout.precision(ss);
     cout << "* Transmission speed: " << received_buff.tran_speed << " KB/s" << endl;
     cout << "* map ID: " << received_buff.map_id << endl;
     cout << "* Source ID: " << received_buff.src_vertex << "    Destination ID:" << received_buff.dest_vertex << endl;
-
+    //work through the original rows with the vertex data
     while(stop_index != string::npos){
         first_end = atoi(map_string.substr(0, stop_index).c_str());
         map_string = map_string.substr(stop_index + 1);
@@ -126,7 +124,6 @@ void parse_map_string(string map_string){
             cur_vec.push_back(pair2);
             received_buff.graph[second_end] = cur_vec;
         }
-        received_buff.num_edges++;
         received_buff.vertice.insert(first_end);
         received_buff.vertice.insert(second_end);
         
@@ -166,11 +163,11 @@ int main(int argc, const char* argv[]) {
         cout << "Shortest path: ";
 		for(int l = path[0]; l > 0; l--){
             if(l == 1){
-                output_msg.path[l] = path[l];
+                calc_results.path[l] = path[l];
                 cout << path[l];
             }
             else{
-                output_msg.path[l] = path[l];
+                calc_results.path[l] = path[l];
 			    cout << path[l] << " -- "; 
             }
 		}
@@ -184,19 +181,19 @@ int main(int argc, const char* argv[]) {
         cout << "Transmission delay: " << round(transmission_delay*round_precision)/round_precision << " s" << endl;
         cout << "Propagation delay: " << round(propagation_delay*round_precision)/round_precision << " s" << endl << endl;
         cout.precision(ss);
-        output_msg.path[0] = path[0];
-        output_msg.distance = received_buff.shortest_path_len;
-        output_msg.tran_delay = transmission_delay;
-        output_msg.prop_delay = propagation_delay;
+        calc_results.path[0] = path[0];
+        calc_results.distance = received_buff.shortest_path_len;
+        calc_results.tran_delay = transmission_delay;
+        calc_results.prop_delay = propagation_delay;
 		// print out dijkstra's result on screen
 		//show_path_finding_msg(result, src_vertex);
 
         // send three delays(output message) to AWS server
         // reference: Beej Guide
-        char send_buff[MAX_BUF_LEN];
-        memset(send_buff, 0, MAX_BUF_LEN);
-        memcpy(send_buff, &output_msg, sizeof output_msg);
-		if (sendto(udp_sockfd, send_buff, sizeof send_buff, 0, (const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
+        char calc_results_buf[MAX_BUF_LEN];
+        memset(calc_results_buf, 0, MAX_BUF_LEN);
+        memcpy(calc_results_buf, &calc_results, sizeof calc_results);
+		if (sendto(udp_sockfd, calc_results_buf, sizeof calc_results_buf, 0, (const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
 			perror("Server C Response Error");
 			exit(1);
 		}
@@ -259,25 +256,27 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
 	set<int> vertices = received_buff.vertice;
 
 	// cur_graph stores every vertex and its adjacent vertices along with the distance between them
-	map<int, vector<pair<int, double>>> cur_graph = received_buff.graph;
+	//map<int, vector<pair<int, double>>> cur_graph = received_buff.graph;
 
-	set<int>::iterator iter = vertices.begin();
+	//set<int>::iterator iter = vertices.begin();
+    map<int, vector<pair<int, double>>>::iterator iter = received_buff.graph.begin();
 	// isVisited map stores whether a vertex has beeb visited
 	map<int, bool> isVisited;
-	// init every node distance to INF
-	while(iter != vertices.end()) {
-		int cur_ver = *iter;
-		if (cur_ver != src) {
-			result[cur_ver] = INF;
+	// init every node distance to INFINITE
+	while(iter != received_buff.graph.end()) {
+        pair<int, double> cur_ver;
+        cur_ver.first = iter->first;
+		if (cur_ver.first != src) {
+			result[cur_ver.first] = INFINITE;
 		}
-		isVisited[cur_ver] = false;
+		isVisited[cur_ver.first] = false;
 		iter++;
 	}
 
 	map<int, bool>::iterator iter_vis = isVisited.begin();
 	while(iter_vis != isVisited.end()) {
 		int u = -1;
-		double MIN = INF;
+		double MIN = INFINITE;
 		map<int, bool>::iterator iter_vis1 = isVisited.begin();
 		while (iter_vis1 != isVisited.end()) {
 			int cur_ver = iter_vis1 -> first;
@@ -293,7 +292,7 @@ void path_finding(int src, int dest, map<int, double> &result, int path[]) {
 		}
 		isVisited[u] = true;
 
-		vector<pair<int, double> > neighbors = cur_graph[u];
+		vector<pair<int, double> > neighbors = received_buff.graph[u];
 
 		for (uint i = 0; i < neighbors.size(); i++) {
 			int v = neighbors[i].first;
