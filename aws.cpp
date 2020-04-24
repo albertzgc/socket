@@ -13,22 +13,20 @@
 #include <ios>
 #include <iostream>
 #include <iomanip>
-#include <map>
-#include <vector>
 #include <set>
 #include <math.h>
 
 using namespace std;
 
-#define AWS_UDP_PORT 33229
-#define AWS_TCP_CLIENT_PORT 34229
-#define SERVERA_PORT 30229
-#define SERVERB_PORT 31229
-#define SERVERC_PORT 32229
+#define AWS_UDP 33229
+#define AWS_TCP 34229
+#define SERVER_A_UDP 30229
+#define SERVER_B_UDP 31229
+#define SERVER_C_UDP 32229
 #define MAX_BUF_LEN 2048
 #define SERVERA_STRING "Server A"
 #define SERVERB_STRING "Server B"
-struct MapInfo{
+struct MapData{
 	char map_id;
 	set<int> vertice;
 	string map_string;
@@ -36,8 +34,8 @@ struct MapInfo{
 struct InputArguments
 {
 	int			map_id;
-	int			src_vertex_idx;
-	int			dest_vertex_idx;
+	int			source_vertex;
+	int			dest_vertex;
 	int			file_size;
 };
 struct CalculationResults
@@ -50,7 +48,7 @@ struct CalculationResults
 int udp_sockfd, tcp_sockfd;
 struct sockaddr_in udp_addr, udp_client_addr, tcp_addr, tcp_client_addr;
 InputArguments user_arg;
-MapInfo map_data;
+MapData map_data;
 CalculationResults calc_results;
 
 void parse_map_string(string map_string){
@@ -84,9 +82,9 @@ void parse_map_string(string map_string){
     }
     map_data.vertice = vertices;
 }
-void no_map_error_to_client(int new_tcp_sockfd, string no_vertice_found){
+void no_vertex_error_to_client(int new_tcp_sockfd, string no_vertice_found){
     if(sendto(new_tcp_sockfd, no_vertice_found.c_str(), sizeof no_vertice_found, 0, (struct sockaddr *) &tcp_client_addr, sizeof tcp_client_addr) == -1){
-        cout << "Failed to send message" << endl;
+        cout << "Failed to send no vertex data to client" << endl;
         close(tcp_sockfd);
         exit(1);
     }
@@ -94,7 +92,7 @@ void no_map_error_to_client(int new_tcp_sockfd, string no_vertice_found){
 void no_map_error_to_client(int new_tcp_sockfd){
     string no_map_found = "No map";
     if(sendto(new_tcp_sockfd, no_map_found.c_str(), sizeof no_map_found, 0, (struct sockaddr *) &tcp_client_addr, sizeof tcp_client_addr) == -1) {
-        cout << "Failed to send message" << endl;
+        cout << "Failed to send no map data to client" << endl;
         close(tcp_sockfd);
         exit(1);
     }
@@ -105,25 +103,29 @@ void send_to_server(string server) {
 	//put the user map id arg into string to send to server A or B
     string send_message = std::to_string(user_arg.map_id) + " ";
     string server_string = "";//string for printing respective server names
-	//prepare udp socket for sending
+	//prepare udp socket for sending to server
 	memset(&udp_addr,0, sizeof udp_addr);
 	udp_addr.sin_family = AF_INET;
     //statements to determine which server is being used
     if(server == SERVERA_STRING){
-	    udp_addr.sin_port = htons(SERVERA_PORT);
+	    udp_addr.sin_port = htons(SERVER_A_UDP);
         server_string = SERVERA_STRING;
     }
     else{
-	    udp_addr.sin_port = htons(SERVERB_PORT);
+	    udp_addr.sin_port = htons(SERVER_B_UDP);
         server_string = SERVERB_STRING;
     }
 	udp_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_message, 0, (struct sockaddr *) &udp_addr, sizeof udp_addr);
+	if(sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_message, 0, (struct sockaddr *) &udp_addr, sizeof udp_addr) == -1) {
+        cout << "Failed to send data to " << server_string << endl;
+        close(tcp_sockfd);
+        exit(1);
+    }
 	
-	cout << "The AWS has sent Map ID to " << server_string << " using UDP over port " << AWS_UDP_PORT << endl;
+	cout << "The AWS has sent Map ID to " << server_string << " using UDP over port " << AWS_UDP << endl;
 }
 int receive_from_server(string server) {
-	//prepare udp socket for receiving
+	//prepare udp socket for receiving from server
 	socklen_t server_udp_len = sizeof udp_client_addr;
 	char map_info[MAX_BUF_LEN];
 	memset(map_info, 0, MAX_BUF_LEN);
@@ -138,7 +140,7 @@ int receive_from_server(string server) {
         server_string = SERVERB_STRING;
     }
 	if((numbytes = recvfrom(udp_sockfd, map_info, sizeof map_info, 0, (struct sockaddr*)&udp_client_addr, &server_udp_len)) == -1){
-			cout << "Error receiving from server " << server_string << endl;
+			cout << "AWS error receiving from server " << server_string << endl;
 			exit(1);
 	}
     //check whether map id could be found in the current server
@@ -156,21 +158,24 @@ int receive_from_server(string server) {
     }
 }
 void send_to_serverC() {
-    //prepare udp socket for sending
+    //prepare udp socket for sending to server C
 	memset(&udp_addr,0, sizeof(udp_addr));
 	udp_addr.sin_family = AF_INET;
-	udp_addr.sin_port = htons(SERVERC_PORT);
+	udp_addr.sin_port = htons(SERVER_C_UDP);
 	udp_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     //placing the source and dest vertex, requested file size, and map info into a string to be parsed and reconstructed again at server C
-    string complete_user_req = std::to_string(user_arg.src_vertex_idx) + "-" + std::to_string(user_arg.dest_vertex_idx) + "-" + std::to_string(user_arg.file_size) + "-" + (map_data.map_string);
-	sendto(udp_sockfd, (void*) complete_user_req.c_str(), MAX_BUF_LEN, 0, (struct sockaddr *) &udp_addr, sizeof udp_addr);
+    string complete_user_req = std::to_string(user_arg.source_vertex) + "-" + std::to_string(user_arg.dest_vertex) + "-" + std::to_string(user_arg.file_size) + "-" + (map_data.map_string);
+	if(sendto(udp_sockfd, (void*) complete_user_req.c_str(), MAX_BUF_LEN, 0, (struct sockaddr *) &udp_addr, sizeof udp_addr) == -1) {
+        cout << "AWS failed to send data to server C" << endl;
+        close(tcp_sockfd);
+        exit(1);
+    }
 
-	//print the onscreen message
-	cout << "The AWS has sent map, source ID, destination ID, propagation speed, and transmission speed to server C using UDP over port " << AWS_UDP_PORT << endl;
+	cout << "The AWS has sent map, source ID, destination ID, propagation speed, and transmission speed to server C using UDP over port " << AWS_UDP << endl;
 }
-
 void receive_from_serverC() {
-    //prepare udp socket for receving
+    //prepare udp socket for receving from server C
+    //from Beej Guide
 	socklen_t server_udp_len = sizeof udp_client_addr;
 	char calc_results_buf[MAX_BUF_LEN];
 	memset(calc_results_buf, 0, MAX_BUF_LEN);
@@ -208,7 +213,7 @@ int main(int argc, const char* argv[]){
 	}
 	memset(&udp_addr, 0, sizeof udp_addr);
 	udp_addr.sin_family = AF_INET;
-	udp_addr.sin_port = htons(AWS_UDP_PORT);
+	udp_addr.sin_port = htons(AWS_UDP);
 	udp_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	if (bind(udp_sockfd, (struct sockaddr*) &udp_addr, sizeof udp_addr) == -1) {
             cout << "AWS failed to bind to UDP socket" << endl;
@@ -221,7 +226,7 @@ int main(int argc, const char* argv[]){
 	}
 	memset(&tcp_addr, 0, sizeof tcp_addr);
 	tcp_addr.sin_family = AF_INET;
-	tcp_addr.sin_port = htons(AWS_TCP_CLIENT_PORT);
+	tcp_addr.sin_port = htons(AWS_TCP);
 	tcp_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	if(bind(tcp_sockfd, (struct sockaddr*) &tcp_addr, sizeof tcp_addr) == -1){
        	cout << "AWS failed to bind to TCP socket" << endl;
@@ -231,7 +236,9 @@ int main(int argc, const char* argv[]){
 
 	printf("The AWS is up and running.\n");
 
-	while (1) {// reference: Beej Guide
+	while (1) {
+        //from Beej Guide
+        //prepare tcp socket for receiving from client
         socklen_t tcp_client_addr_len = sizeof tcp_client_addr;
         int new_tcp_sockfd = accept(tcp_sockfd, (struct sockaddr *)&tcp_client_addr, &tcp_client_addr_len);
 		if(new_tcp_sockfd == -1 ){
@@ -244,18 +251,18 @@ int main(int argc, const char* argv[]){
 		memset(user_req, 0, MAX_BUF_LEN);
 		int num_of_bytes_read = recv(new_tcp_sockfd, user_req, sizeof user_req, 0);
 		if(num_of_bytes_read < 0) {
-			cout << "Failed to receive message" << endl;
+			cout << "AWS failed to receive message from client" << endl;
 			exit(1);
 		}
         //unpackage the user arguments from the char buffer and into our own struct
 		memset(&user_arg, 0, sizeof user_arg);
 		memcpy(&user_arg, user_req, sizeof user_req);
 
-        //prepare tcp socket to send calculated data when ready
+        //prepare tcp socket to send calculated data to client when ready
 		socklen_t tcp_length = sizeof tcp_client_addr;
 		getsockname(tcp_sockfd,(struct sockaddr*) &tcp_client_addr, &tcp_length);
 
-		cout << "The AWS has received map ID " << (char)user_arg.map_id << ", start vertex " << user_arg.src_vertex_idx << ", destination vertex " << user_arg.dest_vertex_idx << ", and file size " << user_arg.file_size << " from the client using TCP over port " << ntohs(tcp_client_addr.sin_port) << endl;
+		cout << "The AWS has received map ID " << (char)user_arg.map_id << ", start vertex " << user_arg.source_vertex << ", destination vertex " << user_arg.dest_vertex << ", and file size " << user_arg.file_size << " from the client using TCP over port " << ntohs(tcp_client_addr.sin_port) << endl;
 
 		//check server A's map to see if it contains the map id first
 		send_to_server(SERVERA_STRING);
@@ -270,14 +277,14 @@ int main(int argc, const char* argv[]){
         //parse the map data received as a string to get a set of vertices
         parse_map_string(map_data.map_string);
         //if source vertex cannot be found in the set, let client know it is an unknown source
-        if(!map_data.vertice.count(user_arg.src_vertex_idx)){
-            cout << user_arg.src_vertex_idx << " (source) vertex not found in the graph, sending error to client using TCP over port "<< ntohs(tcp_client_addr.sin_port) << endl;
-            no_map_error_to_client(new_tcp_sockfd, "no source");
+        if(!map_data.vertice.count(user_arg.source_vertex)){
+            cout << user_arg.source_vertex << " (source) vertex not found in the graph, sending error to client using TCP over port "<< ntohs(tcp_client_addr.sin_port) << endl;
+            no_vertex_error_to_client(new_tcp_sockfd, "no source");
         }
         //if destination vertex cannot be found in the set, let client know it is an unknown destination
-        else if(!map_data.vertice.count(user_arg.dest_vertex_idx)){
-            cout << user_arg.dest_vertex_idx << " (destination) vertex not found in the graph, sending error to client using TCP over port "<< ntohs(tcp_client_addr.sin_port) << endl;
-            no_map_error_to_client(new_tcp_sockfd, "no destination");
+        else if(!map_data.vertice.count(user_arg.dest_vertex)){
+            cout << user_arg.dest_vertex << " (destination) vertex not found in the graph, sending error to client using TCP over port "<< ntohs(tcp_client_addr.sin_port) << endl;
+            no_vertex_error_to_client(new_tcp_sockfd, "no destination");
         }
         //if both vertices can be found in the set, forward request info to server 3 for calculation
         else{
@@ -289,7 +296,7 @@ int main(int argc, const char* argv[]){
             memset(aws_response, 0, MAX_BUF_LEN);
             memcpy(aws_response, &calc_results, sizeof calc_results);
             if(sendto(new_tcp_sockfd, aws_response, sizeof aws_response, 0, (struct sockaddr *) &tcp_client_addr, sizeof tcp_client_addr) == -1) {
-                cout << "Failed to send data" << endl;
+                cout << "AWS failed to send data to client" << endl;
                 close(tcp_sockfd);
                 exit(1);
             }

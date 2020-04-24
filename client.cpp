@@ -19,13 +19,13 @@
 
 using namespace std;
 
-#define AWS_TCP_CLIENT_PORT 34229
+#define AWS_TCP_PORT 34229
 #define MAX_BUF_LEN 2048
 struct InputArguments
 {
 	int			map_id;
-	int			src_vertex_idx;
-	int			dest_vertex_idx;
+	int			source_vertex;
+	int			dest_vertex;
 	int			file_size;
 };
 
@@ -51,8 +51,8 @@ int main(int argc, const char* argv[]){
 		exit(1);
 	}
 	user_arg.map_id = argv[1][0];
-	user_arg.src_vertex_idx = atoi(argv[2]);
-	user_arg.dest_vertex_idx = atoi(argv[3]);
+	user_arg.source_vertex = atoi(argv[2]);
+	user_arg.dest_vertex = atoi(argv[3]);
 	user_arg.file_size = atoi(argv[4]);
 
 	//from Beej Guide
@@ -61,16 +61,16 @@ int main(int argc, const char* argv[]){
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	if ((sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1) {
-		cout << "Failed to create client TCP socket" << endl;
+		cout << "Client failed to create TCP socket" << endl;
 		exit(1);
 	}
 	memset(&addr_len, 0, sizeof addr_len);
 	addr_len.sin_family = AF_INET;
-	addr_len.sin_port = htons(AWS_TCP_CLIENT_PORT);
+	addr_len.sin_port = htons(AWS_TCP_PORT);
 	addr_len.sin_addr.s_addr = inet_addr("127.0.0.1");//assign hard-coded loopback address
 	cout << "The client is up and running" << endl;
 	if (connect(sockfd, (struct sockaddr*)&addr_len, sizeof addr_len) == -1) {
-		cout << " Could not make connection" << endl;
+		cout << "Client could not make connection to AWS" << endl;
 		close(sockfd);
 		exit(1);
 	}
@@ -80,36 +80,40 @@ int main(int argc, const char* argv[]){
 	memset(user_req, 0, MAX_BUF_LEN);
 	memcpy(user_req, &user_arg, sizeof(user_arg));
 	if (send(sockfd, user_req, sizeof(user_req), 0) == -1) {
-		cout << "Failed to send message" << endl;
+		cout << "Client failed to send message to AWS" << endl;
 		close(sockfd);
 		exit(1);
 	}
-	cout << "The client has sent query to AWS using TCP: start vertex "<< user_arg.src_vertex_idx <<"; destination vertex " << user_arg.dest_vertex_idx << ", map " << (char)user_arg.map_id << "; file size " << user_arg.file_size << endl;
+	cout << "The client has sent query to AWS using TCP: start vertex "<< user_arg.source_vertex <<"; destination vertex " << user_arg.dest_vertex << ", map " << (char)user_arg.map_id << "; file size " << user_arg.file_size << endl;
 	//receive the aws result data in char buffer form
 	char aws_response[MAX_BUF_LEN];
 	memset(aws_response, 0, MAX_BUF_LEN);
 	if (recv(sockfd, aws_response, sizeof aws_response, 0) == -1) {
-		cout << "Failed to receive packet" << endl;
+		cout << "Client error receiving response from AWS" << endl;
 		close(sockfd);
 		exit(1);
 	}
 	char no_map_found[] = "No map";
 	char no_source[] = "no source";
 	char no_destination[] = "no destination";
+	//no map id found message
 	if(!(strcmp(aws_response, no_map_found))){
 		cout << "No map id " << (char)user_arg.map_id << " found" << endl;
 		close(sockfd);
 	}
+	//no source vertex found message
 	else if(!(strcmp(aws_response, no_source))){
-		cout << "No vertex id " << user_arg.src_vertex_idx << " found" << endl;
+		cout << "No vertex id " << user_arg.source_vertex << " found" << endl;
 		close(sockfd);
 	}
+	//no destination vertex found message
 	else if(!(strcmp(aws_response, no_destination))){
-		cout << "No vertex id " << user_arg.dest_vertex_idx << " found" << endl;
+		cout << "No vertex id " << user_arg.dest_vertex << " found" << endl;
 		close(sockfd);
 	}
 	else{
 		//unpackage the aws result data from char buffer to my own struct
+		//some arithmetic and rounding done here so no rounding errors occured before toaling final end to end delay
 		memset(&calc_results, 0, sizeof calc_results);
 		memcpy(&calc_results, aws_response, sizeof calc_results);
 
@@ -117,7 +121,7 @@ int main(int argc, const char* argv[]){
 		cout << "------------------------------------------------------" << endl;
 		cout << "Source  Destination    Min Length    Tt    Tp    Delay" << endl;
 		cout << "------------------------------------------------------" << endl;
-		cout << user_arg.src_vertex_idx << "      " << user_arg.dest_vertex_idx << "             ";
+		cout << user_arg.source_vertex << "      " << user_arg.dest_vertex << "             ";
 		int round_precision = 100;
 		streamsize ss = cout.precision();
 		cout << calc_results.distance << "       ";

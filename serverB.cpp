@@ -18,66 +18,98 @@
 
 using namespace std;
 
-#define SERVERB_PORT 31229
+#define SERVER_B_UDP 31229
 #define MAP_FILE "map2.txt"
-// format to store the vertex infomation from map.txt
 #define MAX_BUF_LEN 2048
-struct MapInfo{
+struct MapData{
 	char map_id;
 	string map_string;
 };
-
-void map_construction();
-
-void create_and_bind_udp_socket();
-
 int udp_sockfd;
 struct sockaddr_in udp_server_addr, udp_client_addr;
-MapInfo maps[52];
+MapData maps[52];
 
+void map_construction() {
+	ifstream mapFile(MAP_FILE);
+	string line;
+	int index = -1;//index in MapData struct array
+	int i = 0; //line number in map file
+	while (getline(mapFile, line)) {
+		//each time an alphabet letter is reached in the file means it is a new graph so reset and start over
+		//store the alphabet letter since that is the map id of a new map and start building the map string
+		//these lines contain non-vertex info so they are delimited by hyphen
+		if (isalpha(line.c_str()[0])) {
+			index++;
+			i = 0;
+			maps[index].map_id = line.c_str()[0];
+			maps[index].map_string = maps[index].map_string + line + "-";
+		}
+		//these lines contain non-vertex info so they are delimited by hyphen
+		if (i > 0 && i < 3) {
+			maps[index].map_string = maps[index].map_string + line + "-";
+		}
+		//the rest of the lines are vertex info, each edge is delimited by a comma
+		else if (i > 2) { 
+			maps[index].map_string = maps[index].map_string + line + ",";
+		}
+		i++;
+	}
+}
 int main(int argc, const char* argv[]) {
-	// print boot up msg
-	cout << "The Server B is up and running using UDP on port " << SERVERB_PORT << endl;
-
 	map_construction();
 
-	create_and_bind_udp_socket();
+	//from Beej Guide
+	//prepare udp socket for receiving from AWS
+	if ((udp_sockfd = socket(PF_INET, SOCK_DGRAM, 0)) == -1) {
+		cout << "Server B failed to create UDP socket" << endl;
+		exit(1);
+	}
+	memset(&udp_server_addr, 0, sizeof udp_server_addr);
+	udp_server_addr.sin_family = AF_INET;
+	udp_server_addr.sin_port = htons(SERVER_B_UDP);
+	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	socklen_t udp_server_addr_len = sizeof udp_server_addr;
+	if(bind(udp_sockfd, (struct sockaddr*) &udp_server_addr, udp_server_addr_len) == -1){
+		cout << "Server A failed to bind to UDP socket" << endl;
+		exit(1);
+	}
+	cout << "The Server B is up and running using UDP on port " << SERVER_B_UDP << endl;
 
-	// catch any possible message
-	while(true) {
-		// receive map id and starting vertex from aws
+	//while loop to listen via udp
+	while(1) {
+        //from Beej Guide
+        //prepare udp socket for receiving from aws
 		socklen_t udp_client_addr_len = sizeof udp_client_addr;
-		// reference: Beej Guide
-		char recv_buf[MAX_BUF_LEN];
+		char aws_req_buf[MAX_BUF_LEN];
 		int numbytes;
-		memset(recv_buf, 0, MAX_BUF_LEN);
-		if ((numbytes = recvfrom(udp_sockfd,recv_buf, sizeof recv_buf,0,
+		memset(aws_req_buf, 0, MAX_BUF_LEN);
+		if ((numbytes = recvfrom(udp_sockfd,aws_req_buf, sizeof aws_req_buf,0,
 			(struct sockaddr *) &udp_client_addr, &udp_client_addr_len)) == -1) {
-			perror("Server B Receive Error");
+			cout << "Server B failed to receive data from AWS" << endl;
 			exit(1);
 		}
-		recv_buf[numbytes] = '\0';
-		vector<string> recv_payload;
-		string recv_input = string(recv_buf);
-		int i = recv_input.find_first_of(" ");
-		string parsed_string = recv_input.substr(0, i);
-		recv_payload.push_back(parsed_string);
-		char id = atoi(recv_payload[0].c_str());
+		aws_req_buf[numbytes] = '\0';
+		vector<string> aws_req_vec;
+		string aws_req_str = string(aws_req_buf);
+		int i = aws_req_str.find_first_of(" ");
+		string parsed_string = aws_req_str.substr(0, i);
+		aws_req_vec.push_back(parsed_string);
+		char id = atoi(aws_req_vec[0].c_str());
 
 		cout << "The Server B has received input for finding graph of map " << id << endl;
 
-		// locate the index of the map whose map_id is required id
+		//check to see if the request map id can be found in the map file in server A
 		int index = 0;
 		while (maps[index].map_id != id) {
-			//todo check for error
+			//server A reached max possibilities, not in this server. sends error to AWS
 			if(index == 52){
 				cout << "The Server B does not have the required graph id " << id << endl;
 				string graph_not_found_message = "Graph not Found";
-				// send path finding result to the AWS
-				// reference: Beej Guide
+				//from Beej Guide
+				//udp socket for sending error to aws
 				if (sendto(udp_sockfd, graph_not_found_message.c_str(), sizeof graph_not_found_message, 0, 
 					(const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
-					perror("Server B Response Error");
+					cout << "Server B failed to send error message to AWS" << endl;
 					exit(1);
 				}
 				cout << "The Server B has sent \"" << graph_not_found_message << "\" to AWS." << endl << endl;
@@ -85,16 +117,15 @@ int main(int argc, const char* argv[]) {
 			}
 			index++;
 		}
+		//map id was found, send the string with the map info over to aws
 		if(index != 52){
-			char send_buf[MAX_BUF_LEN];
-			memset(send_buf, 0, MAX_BUF_LEN);
-			memcpy(send_buf, &maps[index].map_string, sizeof maps[index]);
+			//udp socket for sending map info string to aws as a char buf
+			char map_info[MAX_BUF_LEN];
+			memset(map_info, 0, MAX_BUF_LEN);
+			memcpy(map_info, &maps[index].map_string, sizeof maps[index]);
 			string send_message = (maps[index].map_string);
-			// send path finding result to the AWS
-			// reference: Beej Guide
-			if (sendto(udp_sockfd, (void*) send_message.c_str(), sizeof send_buf, 0, 
-				(const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
-					perror("Server B Response Error");
+			if (sendto(udp_sockfd, (void*) send_message.c_str(), sizeof map_info, 0, (const struct sockaddr *) &udp_client_addr, (socklen_t)sizeof udp_client_addr) == -1) {
+					cout << "Server A failed to send map info string to AWS" << endl;
 					exit(1);
 			}
 			cout << "The Server B has sent Graph to AWS."  << endl << endl;
@@ -102,57 +133,4 @@ int main(int argc, const char* argv[]) {
 	}
 	close(udp_sockfd);
 	return 0;
-}
-
-/* Read map.txt and save the information into result map, then create the onscreen message */
-void map_construction() {
-	ifstream mapFile(MAP_FILE);
-	string line;
-	int idx = -1;
-	int i = 0; // store the # of line counting from map_id line
-	while (getline(mapFile, line)) {
-		// if the first item is alphabet, reset i to 0
-		if (isalpha(line.c_str()[0])) {
-			idx++;
-			i = 0;
-			maps[idx].map_string = "";
-		}
-		if (i == 0) { // if i = 0, current line has map id
-			maps[idx].map_id = line.c_str()[0];
-			maps[idx].map_string = maps[idx].map_string + line + "-";
-		}
-		else if (i == 1) { // if i = 1, current line is for propagation speed
-			maps[idx].map_string = maps[idx].map_string + line + "-";
-		}
-		else if (i == 2) { // if i = 2, current line is for transmission speed
-			maps[idx].map_string = maps[idx].map_string + line + "-";
-		}
-		else if (i > 2) { // if i > 2, then current line has vertex information 
-			// split current line with space and save each line into fileValues
-			maps[idx].map_string = maps[idx].map_string + line + ",";
-		}
-		i++;
-	}
-}
-
-/* create a udp socket and bind the socket with address */
-void create_and_bind_udp_socket() {
-	// create udp client
-	// reference: Beej Guide
-	if ((udp_sockfd = socket(PF_INET, SOCK_DGRAM, 0)) == -1) {
-		perror("Server B UDP Socket Create Error");
-		exit(1);
-	}
-
-	memset(&udp_server_addr, 0, sizeof udp_server_addr);
-	udp_server_addr.sin_family = AF_INET;
-	udp_server_addr.sin_port = htons(SERVERB_PORT);
-	udp_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-	// bind the socket with udp server address
-	socklen_t udp_server_addr_len = sizeof udp_server_addr;
-	if(bind(udp_sockfd, (struct sockaddr*) &udp_server_addr, udp_server_addr_len) == -1){
-		perror("Server B UDP Bind Error");
-		exit(1);
-	}
 }
