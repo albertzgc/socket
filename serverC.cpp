@@ -117,7 +117,8 @@ void printPath(int parent[], int dest, int path[], int index)
 { 
     // Base Case : If dest is source 
     if (parent[dest] == 101) {
-		path[0] = index-1;
+		path[0] = index;
+        path[index] = dest;
         return; 
 	}
     printPath(parent, parent[dest], path, index+1); 
@@ -128,11 +129,11 @@ void printPath(int parent[], int dest, int path[], int index)
 //from https://en.wikipedia.org/wiki/Dijkstra's_algorithm
 void dijkstra(int source, int dest, int path[]) {
 	//array stores shortest vertex path with each index assigned to vertex id
-	int parent[100];
-	for(int l = 0; l < 100; l++){
+	int parent[105];
+	for(int l = 0; l < 104; l++){
 		parent[l] = 0;
 	}
-	parent[0] = 101;
+	parent[source] = 101;
 
 	//add all vertices from map file to dijkstra map and iniatlize their distances from each other to effectively infinite
     map<int, double> dijkstra_map;
@@ -249,11 +250,11 @@ int main(int argc, const char* argv[]) {
         cout << endl;
         //calculate and store the information in our struct
         int round_precision = 100;
+        cout << "Shortest distance: " << complete_user_req.shortest_path_len << " km" << endl;
+        double transmission_delay = ((double)complete_user_req.file_size / complete_user_req.tran_speed);
+        double propagation_delay = (complete_user_req.shortest_path_len / complete_user_req.prop_speed);
         streamsize ss = cout.precision();
         cout.precision(2);
-        cout << "Shortest distance: " << complete_user_req.shortest_path_len << " km" << endl;
-        double transmission_delay = complete_user_req.shortest_path_len / complete_user_req.tran_speed;
-        double propagation_delay = complete_user_req.file_size / complete_user_req.prop_speed;
         cout << "Transmission delay: " << round(transmission_delay*round_precision)/round_precision << " s" << endl;
         cout << "Propagation delay: " << round(propagation_delay*round_precision)/round_precision << " s" << endl << endl;
         cout.precision(ss);
