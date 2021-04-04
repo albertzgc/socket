@@ -1,7 +1,6 @@
-# EE450 Spring 2020 Socket Programming Project
+# Socket Programming Project
 
 Albert Chan
-8764674229
 
 ## What I have done
 
